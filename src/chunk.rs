@@ -71,7 +71,7 @@ impl Chunk {
                 index + 2
             }
             _ => {
-                print!("unknown opcode");
+                println!("unknown opcode");
                 index + 1
             }
         }

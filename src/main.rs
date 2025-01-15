@@ -10,6 +10,8 @@ fn main() {
     chunk.write_chunk(OpCode::OP_RETURN as u8);
     chunk.write_chunk(OpCode::OP_CONSTANT as u8);
     chunk.write_chunk(constant as u8);
+    chunk.write_chunk(2);
+    chunk.write_chunk(OpCode::OP_RETURN as u8);
 
     chunk.disassemble_chunk("test");
 
