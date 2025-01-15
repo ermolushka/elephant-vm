@@ -56,6 +56,11 @@ impl Chunk {
                 index + 1
             }
             x if *x == OpCode::OP_CONSTANT as u8 => {
+                // as constant goes right after OP_CONSTANT, we need to:
+                // - get next value from array of chunks - it will be index
+                // of contant in the constants array
+                // - then we update current index of chunks array
+                // so we skip next item where constant index was
                 println!("OP_CONSTANT");
                 println!(
                     "{:?}",
