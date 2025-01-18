@@ -12,6 +12,7 @@ pub enum OpCode {
 pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: ValueArray,
+    pub lines: Vec<u8>,
 }
 // count and capacity can be used with: len(), capacity()
 
@@ -20,6 +21,7 @@ impl Chunk {
         Chunk {
             code: vec![],
             constants: ValueArray::init_value_array(),
+            lines: vec![],
         }
     }
     // we don't deal with capacity and count here as rust
@@ -27,8 +29,9 @@ impl Chunk {
     // to allocate a new array, copy elements, add new byte,
     // update count and capacity. We would grow by factor of 2 and min
     // capacity would be 8
-    pub fn write_chunk(&mut self, byte: u8) {
+    pub fn write_chunk(&mut self, byte: u8, line: u8) {
         self.code.push(byte);
+        self.lines.push(line);
     }
 
     pub fn add_constant(&mut self, value: Value) -> usize {
@@ -39,6 +42,7 @@ impl Chunk {
     pub fn free_chunk(&mut self) {
         self.code.clear();
         self.constants.free_value_array();
+        self.lines.clear();
     }
     // disasm all instrcutions in the chunk
     pub fn disassemble_chunk(&self, name: &str) {
@@ -52,7 +56,7 @@ impl Chunk {
     pub fn disassemble_instruction(&self, instruction: &u8, index: usize) -> usize {
         match instruction {
             x if *x == OpCode::OP_RETURN as u8 => {
-                println!("OP_RETURN");
+                println!("{:04} OP_RETURN", index);
                 index + 1
             }
             x if *x == OpCode::OP_CONSTANT as u8 => {
@@ -61,13 +65,23 @@ impl Chunk {
                 // of contant in the constants array
                 // - then we update current index of chunks array
                 // so we skip next item where constant index was
-                println!("OP_CONSTANT");
+                let constant = self
+                    .code
+                    .get(index + 1)
+                    .and_then(|i| self.constants.values.get(*i as usize));
+                let line: Option<&u8> = self.lines.get(index);
+                let constant_index = self.code.get(index + 1);
+
+                // The first two bytes are a constant instruction that loads 1.2 from the chunk’s constant pool.
+                // The first byte is the OP_CONSTANT opcode and the second is the index in the constant pool
                 println!(
-                    "{:?}",
-                    self.code
-                        .get(index + 1)
-                        .and_then(|i| self.constants.values.get(*i as usize))
+                    "{:04} {:?} OP_CONSTANT {:?} '{:?}'", // 123 OP_CONSTANT 0 1.2
+                    index,
+                    line.unwrap(),
+                    constant_index.unwrap(),
+                    constant.unwrap()
                 );
+
                 index + 2
             }
             _ => {
