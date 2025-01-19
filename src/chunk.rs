@@ -9,6 +9,7 @@ pub enum OpCode {
 }
 
 // array of bytes of instructions
+#[derive(Debug, Clone)]
 pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: ValueArray,
