@@ -6,6 +6,12 @@ pub enum OpCode {
     OP_RETURN = 0,
     // produces constant, VM loads constant
     OP_CONSTANT = 1,
+    // making 1 -> -1
+    OP_NEGATE = 2,
+    OP_ADD = 3,
+    OP_SUBTRACT = 4,
+    OP_MULTIPLY = 5,
+    OP_DIVIDE = 6,
 }
 
 // array of bytes of instructions
@@ -58,6 +64,26 @@ impl Chunk {
         match instruction {
             x if *x == OpCode::OP_RETURN as u8 => {
                 println!("{:04} OP_RETURN", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_NEGATE as u8 => {
+                println!("{:04} OP_NEGATE", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_ADD as u8 => {
+                println!("{:04} OP_ADD", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_SUBTRACT as u8 => {
+                println!("{:04} OP_SUBTRACT", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_MULTIPLY as u8 => {
+                println!("{:04} OP_MULTIPLY", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_NEGATE as u8 => {
+                println!("{:04} OP_DIVIDE", index);
                 index + 1
             }
             x if *x == OpCode::OP_CONSTANT as u8 => {
