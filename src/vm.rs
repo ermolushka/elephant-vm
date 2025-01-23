@@ -1,6 +1,6 @@
 use std::panic::PanicInfo;
 
-use crate::{Chunk, OpCode, Value};
+use crate::{compiler::Compiler, Chunk, OpCode, Scanner, Value};
 
 const STACK_SIZE: u16 = 256;
 
@@ -28,12 +28,10 @@ impl VM {
     pub fn free_vm(&self) {
         todo!();
     }
-    pub fn interpret(&mut self, chunk: &Chunk) {
-        // store chunk being executed in VM
-        self.chunk = chunk.clone();
-        // ip is for location of instruction being executed
-        self.ip = 0;
-        self.run();
+    pub fn interpret(&mut self, source: &str) -> InterpretResult {
+        let mut compiler = Compiler::new(source);
+        compiler.compile(source);
+        return InterpretResult::InterpretOk;
     }
 
     pub fn push(&mut self, value: &Value) {
