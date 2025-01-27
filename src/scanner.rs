@@ -5,7 +5,7 @@ pub struct Scanner {
     pub line: i32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub start: usize,

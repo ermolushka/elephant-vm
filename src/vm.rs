@@ -30,8 +30,16 @@ impl VM {
     }
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let mut compiler = Compiler::new(source);
-        compiler.compile(source);
-        return InterpretResult::InterpretOk;
+
+        // we pass empty chunk to compiler
+        // which should fill it with a bytecode
+        if !compiler.compile(source, &self.chunk) {
+            return InterpretResult::InterpretCompileError;
+        };
+
+        let result: InterpretResult = self.run();
+
+        return result;
     }
 
     pub fn push(&mut self, value: &Value) {
