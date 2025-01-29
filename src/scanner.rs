@@ -191,12 +191,16 @@ impl Scanner {
     }
 
     pub fn advance(&mut self) -> char {
-        self.current += 1;
-        return self.source.chars().nth(self.current - 1).unwrap();
+        if !self.is_at_end() {
+            self.current += 1;
+            self.source.chars().nth(self.current - 1).unwrap_or('\0')
+        } else {
+            '\0'
+        }
     }
 
     pub fn is_at_end(&self) -> bool {
-        return self.source.chars().nth(self.current).unwrap() == '\0';
+        self.current >= self.source.len()
     }
 
     pub fn match_char(&mut self, value: char) -> bool {
@@ -216,16 +220,20 @@ impl Scanner {
 
     // returns current character but doesn't consume it
     pub fn peek(&self) -> char {
-        return self.source.chars().nth(self.current).unwrap();
+        if self.is_at_end() {
+            '\0' // Return null char if at end
+        } else {
+            self.source.chars().nth(self.current).unwrap_or('\0')
+        }
     }
 
     // If the current character and the next one are both /,
     // we consume them and then any other characters until the next newline or the end of the source code.
     pub fn peek_next(&self) -> char {
-        if self.is_at_end() {
-            return '\0';
+        if self.current + 1 >= self.source.len() {
+            '\0'
         } else {
-            return self.source.chars().nth(self.current + 1).unwrap();
+            self.source.chars().nth(self.current + 1).unwrap_or('\0')
         }
     }
 
@@ -363,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_simple() {
-        let mut scanner = Scanner::init_scanner("1 + 2\0");
+        let mut scanner = Scanner::init_scanner("1 + 2");
         let mut token = scanner.scan_token();
         assert_eq!(token.token_type, TokenType::Number);
         token = scanner.scan_token();
@@ -375,7 +383,7 @@ mod tests {
     }
     #[test]
     fn test_fractional() {
-        let mut scanner = Scanner::init_scanner("  3.12\0");
+        let mut scanner = Scanner::init_scanner("  3.12");
         let mut token = scanner.scan_token();
         assert_eq!(token.token_type, TokenType::Number);
         token = scanner.scan_token();
@@ -384,7 +392,7 @@ mod tests {
     #[test]
     fn test_scan_lexemes() {
         let mut scanner = Scanner::init_scanner(
-            "and class else if nil or print return super var while false for fun this true\0",
+            "and class else if nil or print return super var while false for fun this true",
         );
         let mut token = scanner.scan_token();
         assert_eq!(token.token_type, TokenType::And);
@@ -423,7 +431,7 @@ mod tests {
     }
     #[test]
     fn test_comments() {
-        let mut scanner = Scanner::init_scanner("//this is a test comment\n2\0");
+        let mut scanner = Scanner::init_scanner("//this is a test comment\n2");
         let mut token = scanner.scan_token();
         assert_eq!(token.token_type, TokenType::Number);
         token = scanner.scan_token();
@@ -431,7 +439,7 @@ mod tests {
     }
     #[test]
     fn test_strings() {
-        let mut scanner = Scanner::init_scanner("     \"test string\" \"test string2\"\0");
+        let mut scanner = Scanner::init_scanner("     \"test string\" \"test string2\"");
         let mut token = scanner.scan_token();
         assert_eq!(token.token_type, TokenType::String);
         let mut token = scanner.scan_token();
