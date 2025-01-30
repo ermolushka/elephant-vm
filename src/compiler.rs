@@ -330,7 +330,79 @@ impl Compiler {
             compiling_chunk: Chunk::init_chunk(),
         }
     }
-    // single pass compilation
+    /// single pass compilation
+    /// Compiles source code into bytecode.
+    ///
+    /// Example: Compiling the expression "2 * 3 + 1"
+    ///
+    /// Detailed Walkthrough:
+    /// 1. Initialization:
+    ///    - Source string "2 * 3 + 1" is passed to compiler
+    ///    - self.compiling_chunk gets a fresh chunk to store bytecode
+    ///
+    /// 2. self.advance() is called:
+    ///    - Scanner reads first token "2"
+    ///    - Previous token = current token
+    ///    - Current token = new token "2"
+    ///    - Token info stored: type=NUMBER, value="2", line=1
+    ///
+    /// 3. self.expression() starts Pratt parsing:
+    ///    a) Calls parse_precedence(Precedence::Assignment)
+    ///    b) For token "2":
+    ///       - Advance() consumes "2"
+    ///       - Gets prefix rule for NUMBER → calls number()
+    ///       - number() converts "2" to constant and emits:
+    ///         OP_CONSTANT 0 (where 0 is index in constants table)
+    ///    c) For token "*":
+    ///       - Precedence check: Assignment < Factor, continue
+    ///       - Advance() consumes "*"
+    ///       - Gets infix rule → calls binary()
+    ///       - binary() calls parse_precedence(Factor.next())
+    ///    d) For token "3":
+    ///       - Same process as "2"
+    ///       - Emits: OP_CONSTANT 1
+    ///       - Returns to binary() which emits: OP_MULTIPLY
+    ///    e) For token "+":
+    ///       - Precedence check: Assignment < Term, continue
+    ///       - Process similar to "*"
+    ///    f) For token "1":
+    ///       - Same as other numbers
+    ///       - Emits: OP_CONSTANT 2
+    ///       - Returns to binary() which emits: OP_ADD
+    ///
+    /// 4. self.consume(TokenType::Eof):
+    ///    - Verifies next token is EOF
+    ///    - Ensures expression is properly terminated
+    ///    - Emits error if unexpected token found
+    ///
+    /// 5. self.end_compiler():
+    ///    - Emits final OP_RETURN instruction
+    ///    - If no errors, prints disassembled bytecode
+    ///
+    /// Final Bytecode:
+    ///   Offset  | Instruction  | Constants
+    ///   ---------|-------------|----------
+    ///   0000    | OP_CONSTANT  | 2
+    ///   0002    | OP_CONSTANT  | 3  
+    ///   0004    | OP_MULTIPLY  |
+    ///   0005    | OP_CONSTANT  | 1
+    ///   0007    | OP_ADD      |
+    ///   0008    | OP_RETURN   |
+    ///
+    /// Stack Changes:
+    ///   []             // Initial stack
+    ///   [2]            // After first OP_CONSTANT
+    ///   [2, 3]         // After second OP_CONSTANT
+    ///   [6]            // After OP_MULTIPLY (2 * 3)
+    ///   [6, 1]         // After third OP_CONSTANT
+    ///   [7]            // After OP_ADD ((2 * 3) + 1)
+    ///   []             // After OP_RETURN
+    ///
+    /// Error Handling:
+    /// - Returns false if any parsing errors occurred
+    /// - Error state tracked in parser.had_error
+    /// - Continues compilation after errors to find more issues
+    ///
     pub fn compile(&mut self, source: &str, chunk: &Chunk) -> bool {
         self.compiling_chunk = chunk.clone();
         self.advance();
