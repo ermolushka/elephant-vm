@@ -10,6 +10,7 @@ pub struct VM {
     stack: Vec<Value>,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum InterpretResult {
     InterpretOk,
     InterpretCompileError,
@@ -134,9 +135,20 @@ impl VM {
                     self.binary_op("/");
                 }
                 _ => {
-                    panic!("unknown instruciton");
+                    panic!("unknown instruction");
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simple() {
+        let mut elephant_vm = VM::init_vm();
+        assert_eq!(elephant_vm.interpret("1 + 2"), InterpretResult::InterpretOk);
     }
 }
