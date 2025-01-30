@@ -19,7 +19,7 @@ pub enum OpCode {
 pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: ValueArray,
-    pub lines: Vec<u8>,
+    pub lines: Vec<i32>,
 }
 // count and capacity can be used with: len(), capacity()
 
@@ -36,7 +36,7 @@ impl Chunk {
     // to allocate a new array, copy elements, add new byte,
     // update count and capacity. We would grow by factor of 2 and min
     // capacity would be 8
-    pub fn write_chunk(&mut self, byte: u8, line: u8) {
+    pub fn write_chunk(&mut self, byte: u8, line: i32) {
         self.code.push(byte);
         self.lines.push(line);
     }
@@ -96,7 +96,7 @@ impl Chunk {
                     .code
                     .get(index + 1)
                     .and_then(|i| self.constants.values.get(*i as usize));
-                let line: Option<&u8> = self.lines.get(index);
+                let line: Option<&i32> = self.lines.get(index);
                 let constant_index = self.code.get(index + 1);
 
                 // The first two bytes are a constant instruction that loads 1.2 from the chunk’s constant pool.

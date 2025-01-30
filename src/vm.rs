@@ -10,6 +10,7 @@ pub struct VM {
     stack: Vec<Value>,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum InterpretResult {
     InterpretOk,
     InterpretCompileError,
@@ -30,8 +31,19 @@ impl VM {
     }
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let mut compiler = Compiler::new(source);
-        compiler.compile(source);
-        return InterpretResult::InterpretOk;
+        self.chunk = Chunk::init_chunk();
+
+        // we pass empty chunk to compiler
+        // which should fill it with a bytecode
+        if !compiler.compile(source, &self.chunk) {
+            return InterpretResult::InterpretCompileError;
+        };
+
+        self.chunk = compiler.compiling_chunk;
+        self.ip = 0;
+        let result: InterpretResult = self.run();
+
+        return result;
     }
 
     pub fn push(&mut self, value: &Value) {
@@ -76,14 +88,20 @@ impl VM {
     }
     pub fn run(&mut self) -> InterpretResult {
         loop {
-            self.print_stack();
+            // First check if we have any instructions to execute
+            if self.ip as usize >= self.chunk.code.len() {
+                return InterpretResult::InterpretOk;
+            }
+
+            //self.print_stack();
             let instruction = self.chunk.code[self.ip as usize];
             self.ip += 1;
 
             match instruction {
                 x if x == OpCode::OP_RETURN as u8 => {
                     if !self.stack.is_empty() {
-                        println!("{}", self.stack.pop().unwrap());
+                        let result = self.pop();
+                        println!("result: {}", result);
                     }
                     return InterpretResult::InterpretOk;
                 }
@@ -117,9 +135,20 @@ impl VM {
                     self.binary_op("/");
                 }
                 _ => {
-                    panic!("unknown instruciton");
+                    panic!("unknown instruction");
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simple() {
+        let mut elephant_vm = VM::init_vm();
+        assert_eq!(elephant_vm.interpret("1 + 2"), InterpretResult::InterpretOk);
     }
 }
