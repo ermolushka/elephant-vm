@@ -60,31 +60,47 @@ impl VM {
         }
     }
 
-    pub fn binary_op(&mut self, op: &str) {
+    pub fn binary_op(&mut self, op: &str) -> InterpretResult {
+        if !self.peek(0).is_number() || !self.peek(1).is_number() {
+            self.runtime_error("Operands must be numbers.");
+            return InterpretResult::InterpretRuntimeError;
+        }
+
         match op {
             "+" => {
-                let b = self.pop();
-                let a = self.pop();
-                self.push(&(a + b));
+                let b = self.pop().as_number().unwrap();
+                let a = self.pop().as_number().unwrap();
+                self.push(&Value::Number(a + b));
             }
             "-" => {
-                let b = self.pop();
-                let a = self.pop();
-                self.push(&(a - b));
+                let b = self.pop().as_number().unwrap();
+                let a = self.pop().as_number().unwrap();
+                self.push(&Value::Number(a - b));
             }
             "*" => {
-                let b = self.pop();
-                let a = self.pop();
-                self.push(&(a * b));
+                let b = self.pop().as_number().unwrap();
+                let a = self.pop().as_number().unwrap();
+                self.push(&Value::Number(a * b));
             }
             "/" => {
-                let b = self.pop();
-                let a = self.pop();
-                self.push(&(a / b));
+                let b = self.pop().as_number().unwrap();
+                let a = self.pop().as_number().unwrap();
+                self.push(&Value::Number(a / b));
+            }
+            ">" => {
+                let b = self.pop().as_number().unwrap();
+                let a = self.pop().as_number().unwrap();
+                self.push(&Value::Boolean(a > b));
+            }
+            "<" => {
+                let b = self.pop().as_number().unwrap();
+                let a = self.pop().as_number().unwrap();
+                self.push(&Value::Boolean(a < b));
             }
 
             _ => println!("unknown binary operation"),
         }
+        InterpretResult::InterpretOk
     }
     pub fn run(&mut self) -> InterpretResult {
         loop {
@@ -101,7 +117,8 @@ impl VM {
                 x if x == OpCode::OP_RETURN as u8 => {
                     if !self.stack.is_empty() {
                         let result = self.pop();
-                        println!("result: {}", result);
+                        result.print_value();
+                        println!();
                     }
                     return InterpretResult::InterpretOk;
                 }
@@ -115,12 +132,30 @@ impl VM {
                     self.stack.push(constant);
                     println!("constant: {:?}", constant);
                 }
+                x if x == OpCode::OP_NIL as u8 => {
+                    self.stack.push(Value::Nil);
+                }
+                x if x == OpCode::OP_TRUE as u8 => {
+                    self.stack.push(Value::Boolean(true));
+                }
+                x if x == OpCode::OP_FALSE as u8 => {
+                    self.stack.push(Value::Boolean(false));
+                }
+                x if x == OpCode::OP_NOT as u8 => {
+                    let temp_val = self.pop();
+                    self.stack.push(Value::Boolean(temp_val.is_falsey()));
+                }
+
                 // we pop from the stack, make negative and push back
                 // var a = 1.2;
                 // print -a;
                 x if x == OpCode::OP_NEGATE as u8 => {
-                    let value = self.pop() * -1 as f64;
-                    self.push(&value);
+                    if !self.peek(0).is_number() {
+                        self.runtime_error("Operand must be a number.");
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                    let value = self.pop().as_number().unwrap() * -1 as f64;
+                    self.push(&Value::Number(value));
                 }
                 x if x == OpCode::OP_ADD as u8 => {
                     self.binary_op("+");
@@ -134,11 +169,35 @@ impl VM {
                 x if x == OpCode::OP_DIVIDE as u8 => {
                     self.binary_op("/");
                 }
+                x if x == OpCode::OP_EQUAL as u8 => {
+                    let b = self.pop();
+                    let a = self.pop();
+                    self.push(&Value::Boolean(a.values_equal(&b)));
+                }
+                x if x == OpCode::OP_GREATER as u8 => {
+                    self.binary_op(">");
+                }
+                x if x == OpCode::OP_LESS as u8 => {
+                    self.binary_op("<");
+                }
+
                 _ => {
                     panic!("unknown instruction");
                 }
             }
         }
+    }
+    pub fn peek(&self, distance: usize) -> Value {
+        return self.stack[self.stack.len() - 1 - distance];
+    }
+
+    pub fn runtime_error(&mut self, message: &str) {
+        println!("Runtime error: {}", message);
+        self.reset_stack();
+    }
+
+    pub fn reset_stack(&mut self) {
+        self.stack.clear();
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::{Value, ValueArray};
+use crate::{value::Value, ValueArray};
 
 #[repr(u8)]
 pub enum OpCode {
@@ -12,6 +12,13 @@ pub enum OpCode {
     OP_SUBTRACT = 4,
     OP_MULTIPLY = 5,
     OP_DIVIDE = 6,
+    OP_NIL = 7,
+    OP_TRUE = 8,
+    OP_FALSE = 9,
+    OP_NOT = 10,
+    OP_EQUAL = 11,
+    OP_GREATER = 12,
+    OP_LESS = 13,
 }
 
 // array of bytes of instructions
@@ -86,6 +93,22 @@ impl Chunk {
                 println!("{:04} OP_DIVIDE", index);
                 index + 1
             }
+            x if *x == OpCode::OP_NIL as u8 => {
+                println!("{:04} OP_NIL", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_TRUE as u8 => {
+                println!("{:04} OP_TRUE", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_FALSE as u8 => {
+                println!("{:04} OP_FALSE", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_NOT as u8 => {
+                println!("{:04} OP_NOT", index);
+                index + 1
+            }
             x if *x == OpCode::OP_CONSTANT as u8 => {
                 // as constant goes right after OP_CONSTANT, we need to:
                 // - get next value from array of chunks - it will be index
@@ -110,6 +133,18 @@ impl Chunk {
                 );
 
                 index + 2
+            }
+            x if *x == OpCode::OP_EQUAL as u8 => {
+                println!("{:04} OP_EQUAL", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_GREATER as u8 => {
+                println!("{:04} OP_GREATER", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_LESS as u8 => {
+                println!("{:04} OP_LESS", index);
+                index + 1
             }
             _ => {
                 println!("unknown opcode");

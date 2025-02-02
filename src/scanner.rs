@@ -109,37 +109,37 @@ impl Scanner {
             '!' => {
                 // matching '!=' operator
                 if self.match_char('=') {
-                    self.make_token(TokenType::BangEqual);
+                    return self.make_token(TokenType::BangEqual);
                 } else {
                     // matching '!' operator
-                    self.make_token(TokenType::Bang);
+                    return self.make_token(TokenType::Bang);
                 }
             }
             '=' => {
                 // matching '==' operator
                 if self.match_char('=') {
-                    self.make_token(TokenType::EqualEqual);
+                    return self.make_token(TokenType::EqualEqual);
                 } else {
                     // matching '=' operator
-                    self.make_token(TokenType::Equal);
+                    return self.make_token(TokenType::Equal);
                 }
             }
             '<' => {
                 // matching '<=' operator
                 if self.match_char('=') {
-                    self.make_token(TokenType::LessEqual);
+                    return self.make_token(TokenType::LessEqual);
                 } else {
                     // matching '<' operator
-                    self.make_token(TokenType::Less);
+                    return self.make_token(TokenType::Less);
                 }
             }
             '>' => {
                 // matching '>=' operator
                 if self.match_char('=') {
-                    self.make_token(TokenType::GreaterEqual);
+                    return self.make_token(TokenType::GreaterEqual);
                 } else {
                     // matching '>' operator
-                    self.make_token(TokenType::Greater);
+                    return self.make_token(TokenType::Greater);
                 }
             }
             '"' => {
