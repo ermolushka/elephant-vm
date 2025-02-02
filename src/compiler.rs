@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use crate::{scanner, Chunk, OpCode, Scanner, Token, TokenType};
+use crate::{scanner, value::Value, Chunk, OpCode, Scanner, Token, TokenType};
 
 pub struct Compiler {
     scanner: Scanner,
@@ -125,15 +125,15 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     },
     // TOKEN_BANG
     ParseRule {
-        prefix: None,
+        prefix: Some(Compiler::unary),
         infix: None,
         precedence: Precedence::None,
     },
     // TOKEN_BANG_EQUAL
     ParseRule {
         prefix: None,
-        infix: None,
-        precedence: Precedence::None,
+        infix: Some(Compiler::binary),
+        precedence: Precedence::Equality,
     },
     // TOKEN_EQUAL
     ParseRule {
@@ -144,32 +144,32 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     // TOKEN_EQUAL_EQUAL
     ParseRule {
         prefix: None,
-        infix: None,
-        precedence: Precedence::None,
+        infix: Some(Compiler::binary),
+        precedence: Precedence::Equality,
     },
     // TOKEN_GREATER
     ParseRule {
         prefix: None,
-        infix: None,
-        precedence: Precedence::None,
+        infix: Some(Compiler::binary),
+        precedence: Precedence::Comparison,
     },
     // TOKEN_GREATER_EQUAL
     ParseRule {
         prefix: None,
-        infix: None,
-        precedence: Precedence::None,
+        infix: Some(Compiler::binary),
+        precedence: Precedence::Comparison,
     },
     // TOKEN_LESS
     ParseRule {
         prefix: None,
-        infix: None,
-        precedence: Precedence::None,
+        infix: Some(Compiler::binary),
+        precedence: Precedence::Comparison,
     },
     // TOKEN_LESS_EQUAL
     ParseRule {
         prefix: None,
-        infix: None,
-        precedence: Precedence::None,
+        infix: Some(Compiler::binary),
+        precedence: Precedence::Comparison,
     },
     // TOKEN_IDENTIFIER
     ParseRule {
@@ -209,7 +209,7 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     },
     // TOKEN_FALSE
     ParseRule {
-        prefix: None,
+        prefix: Some(Compiler::literal),
         infix: None,
         precedence: Precedence::None,
     },
@@ -233,7 +233,7 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     },
     // TOKEN_NIL
     ParseRule {
-        prefix: None,
+        prefix: Some(Compiler::literal),
         infix: None,
         precedence: Precedence::None,
     },
@@ -269,7 +269,7 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     },
     // TOKEN_TRUE
     ParseRule {
-        prefix: None,
+        prefix: Some(Compiler::literal),
         infix: None,
         precedence: Precedence::None,
     },
@@ -495,6 +495,28 @@ impl Compiler {
             TokenType::Minus => self.emit_byte(OpCode::OP_SUBTRACT as u8),
             TokenType::Star => self.emit_byte(OpCode::OP_MULTIPLY as u8),
             TokenType::Slash => self.emit_byte(OpCode::OP_DIVIDE as u8),
+            TokenType::BangEqual => {
+                self.emit_bytes(OpCode::OP_EQUAL as u8, OpCode::OP_NOT as u8);
+            }
+            TokenType::EqualEqual => self.emit_byte(OpCode::OP_EQUAL as u8),
+            TokenType::Greater => self.emit_byte(OpCode::OP_GREATER as u8),
+            TokenType::GreaterEqual => {
+                self.emit_bytes(OpCode::OP_LESS as u8, OpCode::OP_NOT as u8);
+            }
+            TokenType::Less => self.emit_byte(OpCode::OP_LESS as u8),
+            TokenType::LessEqual => {
+                self.emit_bytes(OpCode::OP_GREATER as u8, OpCode::OP_NOT as u8);
+            }
+            _ => return,
+        }
+    }
+
+    // false, nil, true
+    pub fn literal(&mut self) {
+        match self.parser.previous.token_type {
+            TokenType::False => self.emit_byte(OpCode::OP_FALSE as u8),
+            TokenType::Nil => self.emit_byte(OpCode::OP_NIL as u8),
+            TokenType::True => self.emit_byte(OpCode::OP_TRUE as u8),
             _ => return,
         }
     }
@@ -515,7 +537,7 @@ impl Compiler {
         let number_str = &self.scanner.source[token.start..token.start + token.length];
         // convert to f64
         let value = number_str.parse::<f64>().unwrap();
-        self.emit_constant(value);
+        self.emit_constant(Value::Number(value));
     }
 
     pub fn unary(&mut self) {
@@ -525,6 +547,7 @@ impl Compiler {
         self.parse_precedence(Precedence::Unary);
         // Emit the operator instruction
         match operator_type {
+            TokenType::Bang => self.emit_byte(OpCode::OP_NOT as u8),
             TokenType::Minus => self.emit_byte(OpCode::OP_NEGATE as u8),
             _ => return,
         }
@@ -555,7 +578,7 @@ impl Compiler {
         self.emit_byte(OpCode::OP_RETURN as u8);
     }
 
-    pub fn make_constant(&mut self, value: f64) -> u8 {
+    pub fn make_constant(&mut self, value: Value) -> u8 {
         let constant = self.compiling_chunk.add_constant(value);
         if constant > std::u8::MAX as usize {
             self.error("Too many constants in one chunk.".to_string());
@@ -564,7 +587,7 @@ impl Compiler {
         return constant as u8;
     }
 
-    pub fn emit_constant(&mut self, value: f64) {
+    pub fn emit_constant(&mut self, value: Value) {
         // add value to constants table
         let constant = self.make_constant(value);
         // emit OP_CONSTANT to add value to stack

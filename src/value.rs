@@ -11,7 +11,54 @@
 // literals in the program. To keep things simpler,
 // we’ll put all constants in there, even simple integers.
 
-pub type Value = f64;
+#[derive(Debug, Clone, Copy)]
+pub enum Value {
+    Boolean(bool),
+    Nil,
+    Number(f64),
+}
+
+impl Value {
+    pub fn as_number(&self) -> Option<f64> {
+        match self {
+            Value::Number(n) => Some(*n),
+            _ => None,
+        }
+    }
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Value::Boolean(n) => Some(*n),
+            _ => None,
+        }
+    }
+    pub fn values_equal(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Nil, Value::Nil) => true,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::Number(a), Value::Number(b)) => a == b,
+            _ => false,
+        }
+    }
+    pub fn is_number(&self) -> bool {
+        matches!(self, Value::Number(_))
+    }
+
+    pub fn print_value(&self) {
+        match self {
+            Value::Boolean(b) => print!("{}", b),
+            Value::Nil => print!("nil"),
+            Value::Number(n) => print!("{}", n),
+        }
+    }
+
+    pub fn is_falsey(&self) -> bool {
+        match self {
+            Value::Boolean(b) => !*b,
+            Value::Nil => true,
+            _ => false,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ValueArray {
