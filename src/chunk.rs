@@ -129,7 +129,7 @@ impl Chunk {
                     index,
                     line.unwrap(),
                     constant_index.unwrap(),
-                    constant.unwrap()
+                    constant.unwrap().print_value()
                 );
 
                 index + 2

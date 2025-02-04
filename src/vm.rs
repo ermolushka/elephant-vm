@@ -1,6 +1,6 @@
 use std::panic::PanicInfo;
 
-use crate::{compiler::Compiler, Chunk, OpCode, Scanner, Value};
+use crate::{compiler::Compiler, value::{Obj, ObjType}, Chunk, OpCode, Scanner, Value};
 
 const STACK_SIZE: u16 = 256;
 
@@ -26,8 +26,8 @@ impl VM {
         }
     }
 
-    pub fn free_vm(&self) {
-        todo!();
+    pub fn free_vm(&mut self) {
+        self.reset_stack();
     }
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let mut compiler = Compiler::new(source);
@@ -46,8 +46,8 @@ impl VM {
         return result;
     }
 
-    pub fn push(&mut self, value: &Value) {
-        self.stack.push(*value);
+    pub fn push(&mut self, value: Value) {
+        self.stack.push(value);
     }
     pub fn pop(&mut self) -> Value {
         return self.stack.pop().unwrap();
@@ -70,32 +70,32 @@ impl VM {
             "+" => {
                 let b = self.pop().as_number().unwrap();
                 let a = self.pop().as_number().unwrap();
-                self.push(&Value::Number(a + b));
+                self.push(Value::Number(a + b));
             }
             "-" => {
                 let b = self.pop().as_number().unwrap();
                 let a = self.pop().as_number().unwrap();
-                self.push(&Value::Number(a - b));
+                self.push(Value::Number(a - b));
             }
             "*" => {
                 let b = self.pop().as_number().unwrap();
                 let a = self.pop().as_number().unwrap();
-                self.push(&Value::Number(a * b));
+                self.push(Value::Number(a * b));
             }
             "/" => {
                 let b = self.pop().as_number().unwrap();
                 let a = self.pop().as_number().unwrap();
-                self.push(&Value::Number(a / b));
+                self.push(Value::Number(a / b));
             }
             ">" => {
                 let b = self.pop().as_number().unwrap();
                 let a = self.pop().as_number().unwrap();
-                self.push(&Value::Boolean(a > b));
+                self.push(Value::Boolean(a > b));
             }
             "<" => {
                 let b = self.pop().as_number().unwrap();
                 let a = self.pop().as_number().unwrap();
-                self.push(&Value::Boolean(a < b));
+                self.push(Value::Boolean(a < b));
             }
 
             _ => println!("unknown binary operation"),
@@ -128,9 +128,10 @@ impl VM {
                     // move past constant index
                     self.ip += 1;
                     // get constant
-                    let constant = self.chunk.constants.values[constant_index as usize];
-                    self.stack.push(constant);
-                    println!("constant: {:?}", constant);
+                    let constant = &self.chunk.constants.values[constant_index as usize];
+                    println!("constant: {:?}", &constant);
+                    self.stack.push(constant.clone());
+                    
                 }
                 x if x == OpCode::OP_NIL as u8 => {
                     self.stack.push(Value::Nil);
@@ -155,10 +156,26 @@ impl VM {
                         return InterpretResult::InterpretRuntimeError;
                     }
                     let value = self.pop().as_number().unwrap() * -1 as f64;
-                    self.push(&Value::Number(value));
+                    self.push(Value::Number(value));
                 }
                 x if x == OpCode::OP_ADD as u8 => {
-                    self.binary_op("+");
+                    // concatenate 2 strings and push result back to stack
+                    if self.peek(0).is_string() && self.peek(1).is_string() {
+                        let b = self.pop().as_obj().unwrap();
+                        let a = self.pop().as_obj().unwrap();
+                        let a_str = a.obj_type.as_obj_string();
+                        let b_str = b.obj_type.as_obj_string();
+                        let new_str = format!("{}{}", a_str, b_str);
+                        self.push(Value::Object(Obj {
+                            obj_type: ObjType::ObjString(new_str.to_string()),
+                        }));
+                    } else if self.peek(0).is_number() && self.peek(1).is_number() {
+                        self.binary_op("+");
+                    } else {
+                        self.runtime_error("Operands must be two numbers or two strings.");
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                    // self.binary_op("+");
                 }
                 x if x == OpCode::OP_SUBTRACT as u8 => {
                     self.binary_op("-");
@@ -172,7 +189,7 @@ impl VM {
                 x if x == OpCode::OP_EQUAL as u8 => {
                     let b = self.pop();
                     let a = self.pop();
-                    self.push(&Value::Boolean(a.values_equal(&b)));
+                    self.push(Value::Boolean(a.values_equal(&b)));
                 }
                 x if x == OpCode::OP_GREATER as u8 => {
                     self.binary_op(">");
@@ -187,8 +204,8 @@ impl VM {
             }
         }
     }
-    pub fn peek(&self, distance: usize) -> Value {
-        return self.stack[self.stack.len() - 1 - distance];
+    pub fn peek(&self, distance: usize) -> &Value {
+        return &self.stack[self.stack.len() - 1 - distance];
     }
 
     pub fn runtime_error(&mut self, message: &str) {

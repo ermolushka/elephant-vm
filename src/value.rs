@@ -11,11 +11,30 @@
 // literals in the program. To keep things simpler,
 // we’ll put all constants in there, even simple integers.
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Boolean(bool),
     Nil,
-    Number(f64),
+    Number(f64), 
+    Object(Obj)
+}
+
+#[derive(Debug, Clone)]
+pub struct Obj {
+    pub obj_type: ObjType,
+}
+
+#[derive(Debug, Clone)]
+pub enum ObjType {
+    ObjString(String),
+}
+
+impl ObjType {
+    pub fn as_obj_string(&self) -> &String {
+        match self {
+            ObjType::ObjString(s) => s,
+        }
+    }
 }
 
 impl Value {
@@ -31,11 +50,21 @@ impl Value {
             _ => None,
         }
     }
+
+    pub fn as_obj(&self) -> Option<Obj> {
+        match self {
+            Value::Object(n) => Some(n.clone()),
+            _ => None,
+        }
+    }
     pub fn values_equal(&self, other: &Value) -> bool {
         match (self, other) {
             (Value::Nil, Value::Nil) => true,
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
             (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::Object(a), Value::Object(b)) => match (&a.obj_type, &b.obj_type) {
+                (ObjType::ObjString(str1), ObjType::ObjString(str2)) => str1 == str2,
+            },
             _ => false,
         }
     }
@@ -43,11 +72,31 @@ impl Value {
         matches!(self, Value::Number(_))
     }
 
+    pub fn is_string(&self) -> bool {
+        // check that object object type is ObjString
+        matches!(self, Value::Object(Obj { obj_type: ObjType::ObjString(_) }))
+    }
+
+    pub fn is_object(&self) -> bool {
+        matches!(self, Value::Object(_))
+    }
+
     pub fn print_value(&self) {
         match self {
             Value::Boolean(b) => print!("{}", b),
             Value::Nil => print!("nil"),
             Value::Number(n) => print!("{}", n),
+            Value::Object(obj_string) => {
+                match &obj_string.obj_type {
+                    ObjType::ObjString(obj_str) => {
+                        // let obj_string = obj_string.as_obj_string();
+                        for c in obj_str.chars() {
+                            print!("{}", c);
+                        }
+                        println!();
+                    }
+                }
+            }
         }
     }
 

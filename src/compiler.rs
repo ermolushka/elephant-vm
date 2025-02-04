@@ -1,6 +1,6 @@
-use std::io::{self, Write};
+use std::{io::{self, Write}, string};
 
-use crate::{scanner, value::Value, Chunk, OpCode, Scanner, Token, TokenType};
+use crate::{scanner, value::{Obj, ObjType, Value}, Chunk, OpCode, Scanner, Token, TokenType};
 
 pub struct Compiler {
     scanner: Scanner,
@@ -179,7 +179,7 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     },
     // TOKEN_STRING
     ParseRule {
-        prefix: None,
+        prefix: Some(Compiler::string),
         infix: None,
         precedence: Precedence::None,
     },
@@ -538,6 +538,23 @@ impl Compiler {
         // convert to f64
         let value = number_str.parse::<f64>().unwrap();
         self.emit_constant(Value::Number(value));
+    }
+
+    pub fn string(&mut self) {
+        // Trim leading and trailing quotes
+        let string_start = self.parser.previous.start + 1;
+        let string_length = self.parser.previous.length - 2;
+        
+        // Get the actual string value
+        let actual_value = &self.scanner.source[string_start..string_start + string_length];
+        
+        // Create object with string data
+        let obj = Obj {
+            obj_type: ObjType::ObjString(actual_value.to_string()),
+        };
+        
+        // Emit as constant
+        self.emit_constant(Value::Object(obj));
     }
 
     pub fn unary(&mut self) {
