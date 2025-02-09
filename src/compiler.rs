@@ -3,6 +3,8 @@ use std::{
     string,
 };
 
+use clap::command;
+
 use crate::{
     scanner,
     value::{Obj, ObjString, ObjType, Value},
@@ -58,8 +60,8 @@ impl Precedence {
 }
 
 pub struct ParseRule {
-    pub prefix: Option<fn(&mut Compiler)>,
-    pub infix: Option<fn(&mut Compiler)>,
+    pub prefix: Option<fn(&mut Compiler, bool)>,
+    pub infix: Option<fn(&mut Compiler, bool)>,
     pub precedence: Precedence,
 }
 
@@ -498,13 +500,18 @@ impl Compiler {
         }
     }
 
-    pub fn variable(&mut self) {
-        self.named_variable(self.parser.previous.clone());
+    pub fn variable(&mut self, can_assign: bool) {
+        self.named_variable(self.parser.previous.clone(), can_assign);
     }
 
-    pub fn named_variable(&mut self, name: Token) {
+    pub fn named_variable(&mut self, name: Token, can_assign: bool) {
         let arg = self.identifier_constant(name);
-        self.emit_bytes(OpCode::OP_GET_GLOBAL as u8, arg);
+        if self.match_token(TokenType::Equal) && can_assign {
+            self.expression();
+            self.emit_bytes(OpCode::OP_SET_GLOBAL as u8, arg);
+        } else {
+            self.emit_bytes(OpCode::OP_GET_GLOBAL as u8, arg);
+        }
     }
     // expression followed by a semicolon
     // example:
@@ -605,7 +612,7 @@ impl Compiler {
     }
 
     // + - * /
-    pub fn binary(&mut self) {
+    pub fn binary(&mut self, _can_assign: bool) {
         // Remember the operator.
         let operator_type = self.parser.previous.token_type.clone();
         // Compile the right operand.
@@ -634,7 +641,7 @@ impl Compiler {
     }
 
     // false, nil, true
-    pub fn literal(&mut self) {
+    pub fn literal(&mut self, _can_assign: bool) {
         match self.parser.previous.token_type {
             TokenType::False => self.emit_byte(OpCode::OP_FALSE as u8),
             TokenType::Nil => self.emit_byte(OpCode::OP_NIL as u8),
@@ -643,7 +650,7 @@ impl Compiler {
         }
     }
 
-    pub fn grouping(&mut self) {
+    pub fn grouping(&mut self, _can_assign: bool) {
         // we assume the initial ( has already been consumed. We recursively call back
         // into expression() to compile the expression between the parentheses, then parse
         // the closing ) at the end.
@@ -651,7 +658,7 @@ impl Compiler {
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
 
-    pub fn number(&mut self) {
+    pub fn number(&mut self, _can_assign: bool) {
         // We assume the token for the number literal
         // has already been consumed and is stored in previous
         let token = &self.parser.previous;
@@ -662,7 +669,7 @@ impl Compiler {
         self.emit_constant(Value::Number(value));
     }
 
-    pub fn string(&mut self) {
+    pub fn string(&mut self, _can_assign: bool) {
         // Trim leading and trailing quotes
         let string_start = self.parser.previous.start + 1;
         let string_length = self.parser.previous.length - 2;
@@ -679,7 +686,7 @@ impl Compiler {
         self.emit_constant(Value::Object(obj));
     }
 
-    pub fn unary(&mut self) {
+    pub fn unary(&mut self, _can_assign: bool) {
         // may be - or !
         let operator_type = self.parser.previous.token_type.clone();
         // Compile the operand
@@ -701,7 +708,10 @@ impl Compiler {
             self.error("Expect expression.".to_string());
             return;
         }
-        prefix_rule.unwrap()(self);
+        let can_assign = precedence <= Precedence::Assignment;
+        // call the prefix rule with "can_assign" as argument
+        prefix_rule.unwrap()(self, can_assign);
+
         while precedence
             <= self
                 .get_rule(self.parser.current.token_type.clone())
@@ -709,7 +719,10 @@ impl Compiler {
         {
             self.advance();
             let infix_rule = self.get_rule(self.parser.previous.token_type.clone()).infix;
-            infix_rule.unwrap()(self);
+            infix_rule.unwrap()(self, can_assign);
+        }
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.error("Invalid assignment target.".to_string());
         }
     }
 

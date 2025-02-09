@@ -282,6 +282,19 @@ impl VM {
                         }
                     }
                 }
+                x if x == OpCode::OP_SET_GLOBAL as u8 => {
+                    let name = self.read_string();
+                    self.ip += 1;
+
+                    if self.globals.table_set(name.clone(), self.peek(0).clone()) {
+                        self.globals.table_delete(&name);
+                        self.runtime_error(&format!(
+                            "Undefined variable '{}'.",
+                            name.as_obj_string()
+                        ));
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
 
                 _ => {
                     panic!("unknown instruction");
