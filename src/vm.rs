@@ -1,6 +1,11 @@
 use std::panic::PanicInfo;
 
-use crate::{compiler::Compiler, value::{Obj, ObjType}, Chunk, OpCode, Scanner, Value};
+use crate::{
+    compiler::Compiler,
+    table::Table,
+    value::{Obj, ObjString, ObjType},
+    Chunk, OpCode, Scanner, Value,
+};
 
 const STACK_SIZE: u16 = 256;
 
@@ -8,6 +13,7 @@ pub struct VM {
     chunk: Chunk,
     ip: u8, // current instruction pointer
     stack: Vec<Value>,
+    strings: Table,
 }
 
 #[derive(PartialEq, Debug)]
@@ -23,11 +29,13 @@ impl VM {
             chunk: Chunk::init_chunk(),
             ip: 0,
             stack: Vec::with_capacity(STACK_SIZE as usize),
+            strings: Table::init_table(),
         }
     }
 
     pub fn free_vm(&mut self) {
         self.reset_stack();
+        self.strings.free_table();
     }
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let mut compiler = Compiler::new(source);
@@ -58,6 +66,49 @@ impl VM {
         for value in &self.stack {
             println!("Item: {:?}", value)
         }
+    }
+
+    pub fn intern_string(&mut self, string: String) -> Value {
+        // Create a new ObjString
+        let obj_string = ObjString::new(string);
+
+        // Check if we already have this string
+        if let Some(existing_value) = self
+            .strings
+            .table_get(&ObjType::ObjString(obj_string.clone()))
+        {
+            return existing_value;
+        }
+
+        // If not found, create new string object and store it
+        let value = Value::Object(Obj {
+            obj_type: ObjType::ObjString(obj_string.clone()),
+        });
+
+        // Store in the strings table
+        self.strings
+            .table_set(ObjType::ObjString(obj_string), value.clone());
+
+        value
+    }
+
+    pub fn concatenate(&mut self) -> InterpretResult {
+        let b = self.pop();
+        let a = self.pop();
+
+        if let (Value::Object(obj_a), Value::Object(obj_b)) = (a, b) {
+            if let (ObjType::ObjString(str_a), ObjType::ObjString(str_b)) =
+                (&obj_a.obj_type, &obj_b.obj_type)
+            {
+                let new_string = format!("{}{}", str_a.as_str(), str_b.as_str());
+                let result = self.intern_string(new_string);
+                self.push(result);
+                return InterpretResult::InterpretOk;
+            }
+        }
+
+        self.runtime_error("Operands must be strings.");
+        InterpretResult::InterpretRuntimeError
     }
 
     pub fn binary_op(&mut self, op: &str) -> InterpretResult {
@@ -131,7 +182,6 @@ impl VM {
                     let constant = &self.chunk.constants.values[constant_index as usize];
                     println!("constant: {:?}", &constant);
                     self.stack.push(constant.clone());
-                    
                 }
                 x if x == OpCode::OP_NIL as u8 => {
                     self.stack.push(Value::Nil);
@@ -161,14 +211,7 @@ impl VM {
                 x if x == OpCode::OP_ADD as u8 => {
                     // concatenate 2 strings and push result back to stack
                     if self.peek(0).is_string() && self.peek(1).is_string() {
-                        let b = self.pop().as_obj().unwrap();
-                        let a = self.pop().as_obj().unwrap();
-                        let a_str = a.obj_type.as_obj_string();
-                        let b_str = b.obj_type.as_obj_string();
-                        let new_str = format!("{}{}", a_str, b_str);
-                        self.push(Value::Object(Obj {
-                            obj_type: ObjType::ObjString(new_str.to_string()),
-                        }));
+                        self.concatenate();
                     } else if self.peek(0).is_number() && self.peek(1).is_number() {
                         self.binary_op("+");
                     } else {
