@@ -413,10 +413,44 @@ impl Compiler {
     pub fn compile(&mut self, source: &str, chunk: &Chunk) -> bool {
         self.compiling_chunk = chunk.clone();
         self.advance();
-        self.expression();
-        self.consume(TokenType::Eof, "Expect end of expression.");
+
+        while !self.match_token(TokenType::Eof) {
+            self.declaration();
+        }
+        // self.expression();
+        // self.consume(TokenType::Eof, "Expect end of expression.");
         self.end_compiler();
         return !self.parser.had_error;
+    }
+
+    pub fn declaration(&mut self) {
+        self.statement();
+    }
+
+    pub fn statement(&mut self) {
+        if self.match_token(TokenType::Print) {
+            self.print_statement();
+        } else {
+            
+        }
+    }
+
+    pub fn match_token(&mut self, token_type: TokenType) -> bool {
+        if !self.check(token_type) {
+            return false;
+        }
+        self.advance();
+        return true;
+    }
+
+    pub fn check(&mut self, token_type: TokenType) -> bool {
+        self.parser.current.token_type == token_type
+    }
+
+    pub fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit_byte(OpCode::OP_PRINT as u8);
     }
 
     pub fn advance(&mut self) {

@@ -240,6 +240,11 @@ impl VM {
                 x if x == OpCode::OP_LESS as u8 => {
                     self.binary_op("<");
                 }
+                x if x == OpCode::OP_PRINT as u8 => {
+                    let value = self.pop();
+                    value.print_value();
+                    println!();
+                }
 
                 _ => {
                     panic!("unknown instruction");

@@ -19,6 +19,7 @@ pub enum OpCode {
     OP_EQUAL = 11,
     OP_GREATER = 12,
     OP_LESS = 13,
+    OP_PRINT = 14,
 }
 
 // array of bytes of instructions
@@ -144,6 +145,10 @@ impl Chunk {
             }
             x if *x == OpCode::OP_LESS as u8 => {
                 println!("{:04} OP_LESS", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_PRINT as u8 => {
+                println!("{:04} OP_PRINT", index);
                 index + 1
             }
             _ => {
