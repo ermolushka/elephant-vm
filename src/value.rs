@@ -11,12 +11,14 @@
 // literals in the program. To keep things simpler,
 // we’ll put all constants in there, even simple integers.
 
+use std::hash::{Hash, Hasher};
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Boolean(bool),
     Nil,
-    Number(f64), 
-    Object(Obj)
+    Number(f64),
+    Object(Obj),
 }
 
 #[derive(Debug, Clone)]
@@ -24,15 +26,63 @@ pub struct Obj {
     pub obj_type: ObjType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ObjType {
-    ObjString(String),
+    ObjString(ObjString),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ObjString {
+    string: String,
+    hash: u64,
+}
+
+// Manual Hash implementation for ObjString
+impl Hash for ObjString {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.hash);
+    }
+}
+
+// Manual Hash implementation for ObjType
+impl Hash for ObjType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            ObjType::ObjString(s) => s.hash(state),
+        }
+    }
+}
+
+impl ObjString {
+    pub fn new(string: String) -> Self {
+        // we use FNV-1a algo https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+        // to hash string value for storing in the hashmap later
+        let mut hasher = fnv::FnvHasher::default();
+        string.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        Self { string, hash }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.string
+    }
+    // get hash for lookup in hashmap
+    pub fn get_hash(&self) -> u64 {
+        self.hash
+    }
 }
 
 impl ObjType {
     pub fn as_obj_string(&self) -> &String {
         match self {
-            ObjType::ObjString(s) => s,
+            ObjType::ObjString(s) => &s.string,
+        }
+    }
+    // get hash for lookup in hashmap
+    pub fn get_hash(&self) -> u64 {
+        match self {
+            ObjType::ObjString(s) => s.get_hash(),
         }
     }
 }
@@ -63,7 +113,14 @@ impl Value {
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
             (Value::Number(a), Value::Number(b)) => a == b,
             (Value::Object(a), Value::Object(b)) => match (&a.obj_type, &b.obj_type) {
-                (ObjType::ObjString(str1), ObjType::ObjString(str2)) => str1 == str2,
+                (ObjType::ObjString(str1), ObjType::ObjString(str2)) => {
+                    // First compare hashes, then strings if hashes match
+                    if str1.get_hash() != str2.get_hash() {
+                        false
+                    } else {
+                        str1.as_str() == str2.as_str()
+                    }
+                }
             },
             _ => false,
         }
@@ -74,7 +131,12 @@ impl Value {
 
     pub fn is_string(&self) -> bool {
         // check that object object type is ObjString
-        matches!(self, Value::Object(Obj { obj_type: ObjType::ObjString(_) }))
+        matches!(
+            self,
+            Value::Object(Obj {
+                obj_type: ObjType::ObjString(_)
+            })
+        )
     }
 
     pub fn is_object(&self) -> bool {
@@ -90,7 +152,7 @@ impl Value {
                 match &obj_string.obj_type {
                     ObjType::ObjString(obj_str) => {
                         // let obj_string = obj_string.as_obj_string();
-                        for c in obj_str.chars() {
+                        for c in obj_str.string.chars() {
                             print!("{}", c);
                         }
                         println!();

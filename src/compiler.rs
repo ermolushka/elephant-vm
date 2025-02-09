@@ -1,6 +1,13 @@
-use std::{io::{self, Write}, string};
+use std::{
+    io::{self, Write},
+    string,
+};
 
-use crate::{scanner, value::{Obj, ObjType, Value}, Chunk, OpCode, Scanner, Token, TokenType};
+use crate::{
+    scanner,
+    value::{Obj, ObjString, ObjType, Value},
+    Chunk, OpCode, Scanner, Token, TokenType,
+};
 
 pub struct Compiler {
     scanner: Scanner,
@@ -544,15 +551,15 @@ impl Compiler {
         // Trim leading and trailing quotes
         let string_start = self.parser.previous.start + 1;
         let string_length = self.parser.previous.length - 2;
-        
+
         // Get the actual string value
         let actual_value = &self.scanner.source[string_start..string_start + string_length];
-        
+
         // Create object with string data
         let obj = Obj {
-            obj_type: ObjType::ObjString(actual_value.to_string()),
+            obj_type: ObjType::ObjString(ObjString::new(actual_value.to_string())),
         };
-        
+
         // Emit as constant
         self.emit_constant(Value::Object(obj));
     }

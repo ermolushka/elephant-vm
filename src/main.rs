@@ -1,6 +1,7 @@
 mod chunk;
 mod compiler;
 mod scanner;
+mod table;
 mod value;
 mod vm;
 use std::io;
@@ -9,6 +10,7 @@ use std::process::exit;
 
 use crate::chunk::*;
 use crate::scanner::*;
+use crate::table::*;
 use crate::value::*;
 use crate::vm::*;
 use clap::Parser;
