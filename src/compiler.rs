@@ -424,15 +424,87 @@ impl Compiler {
     }
 
     pub fn declaration(&mut self) {
-        self.statement();
+        if self.match_token(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.statement();
+        }
+
+        if self.parser.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    pub fn var_declaration(&mut self) {
+        let global = self.parse_variable("Expect variable name.");
+        if self.match_token(TokenType::Equal) {
+            self.expression();
+        } else {
+            self.emit_byte(OpCode::OP_NIL as u8);
+        }
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        );
+        self.define_variable(global);
+    }
+
+    pub fn parse_variable(&mut self, error_msg: &str) -> u8 {
+        self.consume(TokenType::Identifier, error_msg);
+        return self.identifier_constant(self.parser.previous.clone());
+    }
+
+    pub fn identifier_constant(&mut self, name: Token) -> u8 {
+        self.make_constant(Value::Object(Obj {
+            obj_type: ObjType::ObjString(ObjString::new(
+                self.scanner.source[name.start..name.start + name.length].to_string(),
+            )),
+        }))
+    }
+
+    pub fn define_variable(&mut self, global: u8) {
+        self.emit_bytes(OpCode::OP_DEFINE_GLOBAL as u8, global);
+    }
+
+    pub fn synchronize(&mut self) {
+        self.parser.panic_mode = false;
+
+        while self.parser.current.token_type != TokenType::Eof {
+            if self.parser.previous.token_type == TokenType::Semicolon {
+                return;
+            }
+
+            match self.parser.current.token_type {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => return,
+                _ => {}
+            }
+
+            self.advance();
+        }
     }
 
     pub fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
         } else {
-            
+            self.expression_statement();
         }
+    }
+    // expression followed by a semicolon
+    // example:
+    // name = "John";
+    // call(name); <-- expression statement
+    pub fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.emit_byte(OpCode::OP_POP as u8);
     }
 
     pub fn match_token(&mut self, token_type: TokenType) -> bool {

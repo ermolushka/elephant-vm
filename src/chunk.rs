@@ -20,6 +20,8 @@ pub enum OpCode {
     OP_GREATER = 12,
     OP_LESS = 13,
     OP_PRINT = 14,
+    OP_POP = 15,
+    OP_DEFINE_GLOBAL = 16,
 }
 
 // array of bytes of instructions
@@ -149,6 +151,15 @@ impl Chunk {
             }
             x if *x == OpCode::OP_PRINT as u8 => {
                 println!("{:04} OP_PRINT", index);
+                index + 1
+            }
+
+            x if *x == OpCode::OP_POP as u8 => {
+                println!("{:04} OP_POP", index);
+                index + 1
+            }
+            x if *x == OpCode::OP_DEFINE_GLOBAL as u8 => {
+                println!("{:04} OP_DEFINE_GLOBAL", index);
                 index + 1
             }
             _ => {

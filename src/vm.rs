@@ -14,6 +14,7 @@ pub struct VM {
     ip: u8, // current instruction pointer
     stack: Vec<Value>,
     strings: Table,
+    globals: Table,
 }
 
 #[derive(PartialEq, Debug)]
@@ -30,6 +31,7 @@ impl VM {
             ip: 0,
             stack: Vec::with_capacity(STACK_SIZE as usize),
             strings: Table::init_table(),
+            globals: Table::init_table(),
         }
     }
 
@@ -90,6 +92,15 @@ impl VM {
             .table_set(ObjType::ObjString(obj_string), value.clone());
 
         value
+    }
+    // helper to read chunk's constant string
+    pub fn read_string(&self) -> ObjType {
+        let constant_index = self.chunk.code[self.ip as usize];
+        if let Value::Object(obj) = &self.chunk.constants.values[constant_index as usize] {
+            obj.obj_type.clone()
+        } else {
+            panic!("Expected string constant");
+        }
     }
 
     pub fn concatenate(&mut self) -> InterpretResult {
@@ -244,6 +255,15 @@ impl VM {
                     let value = self.pop();
                     value.print_value();
                     println!();
+                }
+                x if x == OpCode::OP_POP as u8 => {
+                    self.pop();
+                }
+                x if x == OpCode::OP_DEFINE_GLOBAL as u8 => {
+                    let name = self.read_string();
+                    self.ip += 1; // Move past the constant index
+                    self.globals.table_set(name, self.peek(0).clone());
+                    self.pop();
                 }
 
                 _ => {
