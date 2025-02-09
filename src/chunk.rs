@@ -22,6 +22,7 @@ pub enum OpCode {
     OP_PRINT = 14,
     OP_POP = 15,
     OP_DEFINE_GLOBAL = 16,
+    OP_GET_GLOBAL = 17,
 }
 
 // array of bytes of instructions
@@ -161,6 +162,24 @@ impl Chunk {
             x if *x == OpCode::OP_DEFINE_GLOBAL as u8 => {
                 println!("{:04} OP_DEFINE_GLOBAL", index);
                 index + 1
+            }
+            x if *x == OpCode::OP_GET_GLOBAL as u8 => {
+                let constant = self
+                    .code
+                    .get(index + 1)
+                    .and_then(|i| self.constants.values.get(*i as usize));
+                let line: Option<&i32> = self.lines.get(index);
+                let constant_index = self.code.get(index + 1);
+
+                println!(
+                    "{:04} {:?} OP_GET_GLOBAL {:?} '{:?}'",
+                    index,
+                    line.unwrap(),
+                    constant_index.unwrap(),
+                    constant.unwrap().print_value()
+                );
+
+                index + 2
             }
             _ => {
                 println!("unknown opcode");

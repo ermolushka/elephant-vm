@@ -180,7 +180,7 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     },
     // TOKEN_IDENTIFIER
     ParseRule {
-        prefix: None,
+        prefix: Some(Compiler::variable),
         infix: None,
         precedence: Precedence::None,
     },
@@ -496,6 +496,15 @@ impl Compiler {
         } else {
             self.expression_statement();
         }
+    }
+
+    pub fn variable(&mut self) {
+        self.named_variable(self.parser.previous.clone());
+    }
+
+    pub fn named_variable(&mut self, name: Token) {
+        let arg = self.identifier_constant(name);
+        self.emit_bytes(OpCode::OP_GET_GLOBAL as u8, arg);
     }
     // expression followed by a semicolon
     // example:

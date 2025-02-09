@@ -265,6 +265,23 @@ impl VM {
                     self.globals.table_set(name, self.peek(0).clone());
                     self.pop();
                 }
+                x if x == OpCode::OP_GET_GLOBAL as u8 => {
+                    let name = self.read_string();
+                    self.ip += 1;
+
+                    match self.globals.table_get(&name) {
+                        Some(value) => {
+                            self.push(value);
+                        }
+                        None => {
+                            self.runtime_error(&format!(
+                                "Undefined variable '{}'.",
+                                name.as_obj_string()
+                            ));
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    }
+                }
 
                 _ => {
                     panic!("unknown instruction");
