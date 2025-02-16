@@ -25,20 +25,21 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    let script = args.script;
+    
     // init vm before doing anything else
     let mut elephant_vm = VM::init_vm();
 
-    if args.repl {
+    if let Some(script) = args.script {
+        // Run the file if script path is provided
+        run_file(&script, &mut elephant_vm);
+    } else if args.repl {
+        // Run REPL mode if --repl flag is set
         repl(&mut elephant_vm);
+    } else {
+        // If no arguments provided, print usage and exit
+        println!("Usage: elephant [--script <path>] [--repl]");
+        exit(64);
     }
-    // } else  if let Some(script) = &script {
-    //     // TODO: fix this as now it process only first line
-    //     lox.run_file(&script);
-    // } else {
-    //     lox.run_prompt();
-    //     exit(64);
-    // }
 
     // stop vm
     elephant_vm.free_vm();
@@ -58,13 +59,12 @@ fn repl(vm: &mut VM) {
 }
 
 fn run_file(file: &str, vm: &mut VM) {
-    let file_content = std::fs::read(file).expect("file not found");
-    let content = String::from_utf8_lossy(&file_content).to_string();
-    let result: &InterpretResult = &vm.interpret(&content);
+    let file_content = std::fs::read_to_string(file).expect("Failed to read file");
+    let result = vm.interpret(&file_content);
 
     match result {
         InterpretResult::InterpretCompileError => exit(65),
         InterpretResult::InterpretRuntimeError => exit(70),
-        _ => println!("unknown result"),
+        InterpretResult::InterpretOk => (), // Continue execution
     }
 }

@@ -1,0 +1,17 @@
+{
+  var a = "outer";
+  {
+    var b = a;
+    print b;
+    print a;
+  }
+}
+
+{
+    var b = 2;
+    {
+        var c = b;
+        print c;
+        print b;
+    }
+}

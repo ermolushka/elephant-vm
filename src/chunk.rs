@@ -205,37 +205,27 @@ impl Chunk {
             }
 
             x if *x == OpCode::OP_GET_LOCAL as u8 => {
-                let constant = self
-                    .code
-                    .get(index + 1)
-                    .and_then(|i| self.constants.values.get(*i as usize));
+                let slot = self.code.get(index + 1);
                 let line: Option<&i32> = self.lines.get(index);
-                let constant_index = self.code.get(index + 1);
 
                 println!(
-                    "{:04} {:?} OP_GET_LOCAL {:?} '{:?}'",
+                    "{:04} {:?} OP_GET_LOCAL {}",
                     index,
                     line.unwrap(),
-                    constant_index.unwrap(),
-                    constant.unwrap().print_value()
+                    slot.unwrap()
                 );
 
                 index + 2
             }
             x if *x == OpCode::OP_SET_LOCAL as u8 => {
-                let constant = self
-                    .code
-                    .get(index + 1)
-                    .and_then(|i| self.constants.values.get(*i as usize));
+                let slot = self.code.get(index + 1);
                 let line: Option<&i32> = self.lines.get(index);
-                let constant_index = self.code.get(index + 1);
 
                 println!(
-                    "{:04} {:?} OP_SET_LOCAL {:?} '{:?}'",
+                    "{:04} {:?} OP_SET_LOCAL {}",
                     index,
                     line.unwrap(),
-                    constant_index.unwrap(),
-                    constant.unwrap().print_value()
+                    slot.unwrap()
                 );
 
                 index + 2

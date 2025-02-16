@@ -477,12 +477,6 @@ impl Compiler {
         return self.identifier_constant(self.parser.previous.clone());
     }
 
-    // pub fn parse_variable(&mut self, error_msg: &str) -> u8 {
-    //     self.consume(TokenType::Identifier, error_msg);
-    //     self.declare_variable();
-    //     return self.identifier_constant(self.parser.previous.clone());
-    // }
-
     pub fn identifier_constant(&mut self, name: Token) -> u8 {
         self.make_constant(Value::Object(Obj {
             obj_type: ObjType::ObjString(ObjString::new(
