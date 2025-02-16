@@ -296,6 +296,17 @@ impl VM {
                     }
                 }
 
+                x if x == OpCode::OP_GET_LOCAL as u8 => {
+                    let slot = self.chunk.code[self.ip as usize];
+                    self.ip += 1;
+                    self.push(self.stack[slot as usize].clone());
+                }
+
+                x if x == OpCode::OP_SET_LOCAL as u8 => {
+                    let slot = self.chunk.code[self.ip as usize];
+                    self.ip += 1;
+                    self.stack[slot as usize] = self.peek(0).clone();
+                }
                 _ => {
                     panic!("unknown instruction");
                 }
