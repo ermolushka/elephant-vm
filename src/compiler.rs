@@ -212,7 +212,7 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     // TOKEN_AND
     ParseRule {
         prefix: None,
-        infix: None,
+        infix: Some(Compiler::and_),
         precedence: Precedence::None,
     },
     // TOKEN_CLASS
@@ -266,7 +266,7 @@ static RULES: [ParseRule; TokenType::Eof as usize + 1] = [
     // TOKEN_PRINT
     ParseRule {
         prefix: None,
-        infix: None,
+        infix: Some(Compiler::or_),
         precedence: Precedence::None,
     },
     // TOKEN_RETURN
@@ -587,6 +587,8 @@ impl Compiler {
             self.print_statement();
         } else if self.match_token(TokenType::If) {
             self.if_statement();
+        } else if self.match_token(TokenType::While) {
+            self.while_statement();
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -594,6 +596,31 @@ impl Compiler {
         } else {
             self.expression_statement();
         }
+    }
+
+    pub fn while_statement(&mut self) {
+        let loop_start = self.compiling_chunk.code.len();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        let exit_jump = self.emit_jump(OpCode::OP_JUMP_IF_FALSE as u8);
+        self.emit_byte(OpCode::OP_POP as u8);
+        self.statement();
+        self.emit_loop(loop_start);
+
+        self.patch_jump(exit_jump);
+        self.emit_byte(OpCode::OP_POP as u8);
+    }
+
+    pub fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_byte(OpCode::OP_LOOP as u8);
+        let offset = self.compiling_chunk.code.len() - loop_start + 2;
+        if offset > std::u16::MAX as usize {
+            self.error("Loop body too large.".to_string());
+        }
+        self.emit_byte(((offset >> 8) & 0xff) as u8);
+        self.emit_byte((offset & 0xff) as u8);
     }
 
     pub fn if_statement(&mut self) {
@@ -615,11 +642,25 @@ impl Compiler {
         self.patch_jump(then_jump);
         self.emit_byte(OpCode::OP_POP as u8);
 
-
         if self.match_token(TokenType::Else) {
             self.statement();
         }
         self.patch_jump(else_jump);
+    }
+    pub fn and_(&mut self, _can_assign: bool) {
+        let end_jump = self.emit_jump(OpCode::OP_JUMP_IF_FALSE as u8);
+        self.emit_byte(OpCode::OP_POP as u8);
+        self.parse_precedence(Precedence::And);
+        self.patch_jump(end_jump);
+    }
+
+    pub fn or_(&mut self, _can_assign: bool) {
+        let else_jump = self.emit_jump(OpCode::OP_JUMP_IF_FALSE as u8);
+        let end_jump = self.emit_jump(OpCode::OP_JUMP as u8);
+        self.patch_jump(else_jump);
+        self.emit_byte(OpCode::OP_POP as u8);
+        self.parse_precedence(Precedence::Or);
+        self.patch_jump(end_jump);
     }
     // The first emits a bytecode instruction and writes a placeholder operand for the jump offset.
     // We pass in the opcode as an argument because later we’ll have two different instructions that

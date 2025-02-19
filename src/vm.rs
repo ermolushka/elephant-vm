@@ -314,7 +314,7 @@ impl VM {
                     let low = self.chunk.code[(self.ip + 1) as usize] as u16;
                     let offset = (high << 8) | low;
                     self.ip += 2; // Move past both offset bytes
-                    
+
                     if self.peek(0).is_falsey() {
                         self.ip = (self.ip as u16 + offset) as usize;
                     }
@@ -325,8 +325,17 @@ impl VM {
                     let low = self.chunk.code[(self.ip + 1) as usize] as u16;
                     let offset = (high << 8) | low;
                     self.ip += 2; // Move past both offset bytes
-                    
+
                     self.ip = (self.ip as u16 + offset) as usize;
+                }
+                x if x == OpCode::OP_LOOP as u8 => {
+                    // Read the two bytes that make up the jump offset
+                    let high = self.chunk.code[self.ip as usize] as u16;
+                    let low = self.chunk.code[(self.ip + 1) as usize] as u16;
+                    let offset = (high << 8) | low;
+                    self.ip += 2; // Move past both offset bytes
+
+                    self.ip = (self.ip as u16 - offset) as usize;
                 }
                 _ => {
                     panic!("unknown instruction");
