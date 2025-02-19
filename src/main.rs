@@ -25,7 +25,7 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    
+
     // init vm before doing anything else
     let mut elephant_vm = VM::init_vm();
 
