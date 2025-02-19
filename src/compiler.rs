@@ -585,6 +585,8 @@ impl Compiler {
     pub fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
+        } else if self.match_token(TokenType::If) {
+            self.if_statement();
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -592,6 +594,52 @@ impl Compiler {
         } else {
             self.expression_statement();
         }
+    }
+
+    pub fn if_statement(&mut self) {
+        // we compile the condition expression, bracketed by parentheses
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        // It has an operand for how much to offset the ip—how many bytes of code to skip
+        // Backpatching. We emit the jump instruction first with a placeholder offset
+        // operand. We keep track of where that half-finished instruction is. Next,
+        // we compile the then body. Once that’s done, we know how far to jump.
+        // So we go back and replace that placeholder offset with the real one now that
+        // we can calculate it. Sort of like sewing a patch onto the existing fabric of the compiled code.
+        let then_jump = self.emit_jump(OpCode::OP_JUMP_IF_FALSE as u8);
+        self.emit_byte(OpCode::OP_POP as u8);
+        self.statement();
+        let else_jump = self.emit_jump(OpCode::OP_JUMP as u8);
+        self.patch_jump(then_jump);
+        self.emit_byte(OpCode::OP_POP as u8);
+
+
+        if self.match_token(TokenType::Else) {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
+    }
+    // The first emits a bytecode instruction and writes a placeholder operand for the jump offset.
+    // We pass in the opcode as an argument because later we’ll have two different instructions that
+    // use this helper. We use two bytes for the jump offset operand. A 16-bit offset lets us jump
+    // over up to 65,535 bytes of code, which should be plenty for our needs.
+    // The function returns the offset of the emitted instruction in the chunk. After compiling the
+    // then branch, we take that offset and pass it to patch_jump()
+
+    pub fn emit_jump(&mut self, instruction: u8) -> usize {
+        self.emit_byte(instruction);
+        self.emit_byte(0xff);
+        self.emit_byte(0xff);
+        return self.compiling_chunk.code.len() - 2;
+    }
+
+    pub fn patch_jump(&mut self, offset: usize) {
+        // -2 to adjust for the bytecode for the jump offset itself.
+        let jump = self.compiling_chunk.code.len() - offset - 2;
+        self.compiling_chunk.code[offset] = ((jump >> 8) & 0xff) as u8;
+        self.compiling_chunk.code[offset + 1] = (jump & 0xff) as u8;
     }
 
     pub fn block(&mut self) {

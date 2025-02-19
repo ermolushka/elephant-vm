@@ -26,6 +26,8 @@ pub enum OpCode {
     OP_SET_GLOBAL = 18,
     OP_GET_LOCAL = 19,
     OP_SET_LOCAL = 20,
+    OP_JUMP_IF_FALSE = 21,
+    OP_JUMP = 22,
 }
 
 // array of bytes of instructions
@@ -229,6 +231,43 @@ impl Chunk {
                 );
 
                 index + 2
+            }
+            x if *x == OpCode::OP_JUMP as u8 => {
+                // Get the two bytes that make up the jump offset
+                let high = *self.code.get(index + 1).unwrap_or(&0) as u16;
+                let low = *self.code.get(index + 2).unwrap_or(&0) as u16;
+                let jump = (high << 8) | low;
+                
+                let line: Option<&i32> = self.lines.get(index);
+                
+                println!(
+                    "{:04} {:?} OP_JUMP      {} -> {}",
+                    index,
+                    line.unwrap(),
+                    index,
+                    index + 3 + jump as usize
+                );
+                
+                index + 3 // Instruction + 2 bytes for jump offset
+            }
+            
+            x if *x == OpCode::OP_JUMP_IF_FALSE as u8 => {
+                // Get the two bytes that make up the jump offset
+                let high = *self.code.get(index + 1).unwrap_or(&0) as u16;
+                let low = *self.code.get(index + 2).unwrap_or(&0) as u16;
+                let jump = (high << 8) | low;
+                
+                let line: Option<&i32> = self.lines.get(index);
+                
+                println!(
+                    "{:04} {:?} OP_JUMP_IF_FALSE {} -> {}",
+                    index,
+                    line.unwrap(),
+                    index,
+                    index + 3 + jump as usize
+                );
+                
+                index + 3 // Instruction + 2 bytes for jump offset
             }
             _ => {
                 println!("unknown opcode");

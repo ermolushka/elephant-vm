@@ -14,4 +14,7 @@
         print c;
         print b;
     }
+    if (b == 2) {
+      print 222;
+    }
 }
