@@ -276,17 +276,17 @@ impl Chunk {
                 let high = *self.code.get(index + 1).unwrap_or(&0) as u16;
                 let low = *self.code.get(index + 2).unwrap_or(&0) as u16;
                 let jump = (high << 8) | low;
-                
+
                 let line: Option<&i32> = self.lines.get(index);
-                
+
                 println!(
                     "{:04} {:?} OP_LOOP       {} -> {}",
                     index,
                     line.unwrap(),
                     index,
-                    index + 3 - jump as usize  // Note the subtraction for backward jump
+                    index + 3 - jump as usize // Note the subtraction for backward jump
                 );
-                
+
                 index + 3
             }
             _ => {

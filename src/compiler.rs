@@ -585,6 +585,8 @@ impl Compiler {
     pub fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
+        } else if self.match_token(TokenType::For) {
+            self.for_statement();
         } else if self.match_token(TokenType::If) {
             self.if_statement();
         } else if self.match_token(TokenType::While) {
@@ -596,6 +598,55 @@ impl Compiler {
         } else {
             self.expression_statement();
         }
+    }
+
+    pub fn for_statement(&mut self) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+        if self.match_token(TokenType::Semicolon) {
+            // No initializer
+        } else if self.match_token(TokenType::Var) {
+            // Var declaration
+            self.var_declaration();
+        } else {
+            // Expression statement
+            self.expression_statement();
+        }
+        let mut loop_start = self.compiling_chunk.code.len();
+        let mut exit_jump = 0; // TODO: probably should somehow set to -1
+
+        // Condition
+        if !self.match_token(TokenType::Semicolon) {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after for condition.");
+
+            // Jump out of the loop if the condition is false
+            exit_jump = self.emit_jump(OpCode::OP_JUMP_IF_FALSE as u8);
+            self.emit_byte(OpCode::OP_POP as u8); // Condition
+        }
+        // Increment
+        if !self.match_token(TokenType::RightParen) {
+            let body_jump = self.emit_jump(OpCode::OP_JUMP as u8);
+            let increment_start = self.compiling_chunk.code.len();
+            self.expression();
+            self.emit_byte(OpCode::OP_POP as u8);
+            self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
+            self.emit_loop(loop_start);
+            loop_start = increment_start;
+            self.patch_jump(body_jump);
+        }
+
+        // Body
+        self.statement();
+        self.emit_loop(loop_start);
+
+        // If there is no condition, we need to jump out of the loop here
+        if exit_jump != 0 {
+            self.patch_jump(exit_jump);
+            self.emit_byte(OpCode::OP_POP as u8); // Condition
+        }
+
+        self.end_scope();
     }
 
     pub fn while_statement(&mut self) {
