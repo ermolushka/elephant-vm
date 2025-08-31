@@ -2,6 +2,11 @@ use crate::chunk::{Chunk, OpCode};
 
 pub const OP_RETURN: u8 = OpCode::OpReturn as u8;
 pub const OP_CONSTANT: u8 = OpCode::OpConstant as u8;
+pub const OP_NEGATE: u8 = OpCode::OpNegate as u8;
+pub const OP_ADD: u8 = OpCode::OpAdd as u8;
+pub const OP_SUBTRACT: u8 = OpCode::OpSubtract as u8;
+pub const OP_MULTIPLY: u8 = OpCode::OpMultiply as u8;
+pub const OP_DIVIDE: u8 = OpCode::OpDivide as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -25,6 +30,11 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     match instruction {
         OP_RETURN => simple_instruction("OP_RETURN", offset),
         OP_CONSTANT => constant_instruction("OP_CONSTANT", chunk, offset),
+        OP_NEGATE => simple_instruction("OP_NEGATE", offset),
+        OP_ADD => simple_instruction("OP_ADD", offset),
+        OP_SUBTRACT => simple_instruction("OP_SUBTRACT", offset),
+        OP_MULTIPLY => simple_instruction("OP_MULTIPLY", offset),
+        OP_DIVIDE => simple_instruction("OP_DIVIDE", offset),
         _ => {
             println!("Unknown opcode: {}", instruction);
             offset + 1
@@ -191,5 +201,177 @@ mod tests {
         }
 
         assert_eq!(instruction_count, 3); // 2 constant instructions + 1 return
+    }
+
+    #[test]
+    fn test_all_opcode_constants() {
+        // Test that all opcode constants are correctly defined
+        assert_eq!(OP_RETURN, OpCode::OpReturn as u8);
+        assert_eq!(OP_CONSTANT, OpCode::OpConstant as u8);
+        assert_eq!(OP_NEGATE, OpCode::OpNegate as u8);
+        assert_eq!(OP_ADD, OpCode::OpAdd as u8);
+        assert_eq!(OP_SUBTRACT, OpCode::OpSubtract as u8);
+        assert_eq!(OP_MULTIPLY, OpCode::OpMultiply as u8);
+        assert_eq!(OP_DIVIDE, OpCode::OpDivide as u8);
+    }
+
+    #[test]
+    fn test_simple_instruction_edge_cases() {
+        // Test with zero offset
+        let offset = simple_instruction("ZERO", 0);
+        assert_eq!(offset, 1);
+
+        // Test with large offset
+        let offset = simple_instruction("LARGE", 1000);
+        assert_eq!(offset, 1001);
+
+        // Test with large offset
+        let offset = simple_instruction("LARGE", 1000);
+        assert_eq!(offset, 1001);
+    }
+
+    #[test]
+    fn test_constant_instruction_edge_cases() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Test with zero constant index
+        chunk.add_constant(0.0);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(0, 1);
+        let offset = constant_instruction("ZERO_CONST", &chunk, 0);
+        assert_eq!(offset, 2);
+
+        // Test with maximum constant index
+        for _ in 0..255 {
+            chunk.add_constant(0.0);
+        }
+        chunk.write_chunk(OpCode::OpConstant as u8, 2);
+        chunk.write_chunk(255, 2);
+        let offset = constant_instruction("MAX_CONST", &chunk, 0);
+        assert_eq!(offset, 2);
+    }
+
+    #[test]
+    fn test_disassemble_instruction_all_opcodes() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Test all opcodes
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+        chunk.write_chunk(OpCode::OpNegate as u8, 2);
+        chunk.write_chunk(OpCode::OpAdd as u8, 3);
+        chunk.write_chunk(OpCode::OpSubtract as u8, 4);
+        chunk.write_chunk(OpCode::OpMultiply as u8, 5);
+        chunk.write_chunk(OpCode::OpDivide as u8, 6);
+
+        // Test disassembly of each
+        let mut offset = 0;
+        offset = disassemble_instruction(&chunk, offset); // Return
+        assert_eq!(offset, 1);
+        offset = disassemble_instruction(&chunk, offset); // Negate
+        assert_eq!(offset, 2);
+        offset = disassemble_instruction(&chunk, offset); // Add
+        assert_eq!(offset, 3);
+        offset = disassemble_instruction(&chunk, offset); // Subtract
+        assert_eq!(offset, 4);
+        offset = disassemble_instruction(&chunk, offset); // Multiply
+        assert_eq!(offset, 5);
+        offset = disassemble_instruction(&chunk, offset); // Divide
+        assert_eq!(offset, 6);
+    }
+
+    #[test]
+    fn test_disassemble_instruction_unknown_opcode() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Test with various unknown opcodes
+        chunk.write_chunk(255, 1); // Maximum u8 value
+        chunk.write_chunk(128, 2); // Middle value
+
+        let offset1 = disassemble_instruction(&chunk, 0);
+        assert_eq!(offset1, 1); // Unknown opcode advances by 1
+
+        let offset2 = disassemble_instruction(&chunk, 1);
+        assert_eq!(offset2, 2); // Unknown opcode advances by 1
+    }
+
+    #[test]
+    fn test_disassemble_chunk_complex_sequence() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Create a complex sequence: constant, negate, constant, add, return
+        let const1_index = chunk.add_constant(10.0);
+        let const2_index = chunk.add_constant(5.0);
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const1_index as u8, 1);
+        chunk.write_chunk(OpCode::OpNegate as u8, 2);
+        chunk.write_chunk(OpCode::OpConstant as u8, 3);
+        chunk.write_chunk(const2_index as u8, 3);
+        chunk.write_chunk(OpCode::OpAdd as u8, 4);
+        chunk.write_chunk(OpCode::OpReturn as u8, 5);
+
+        // This should not panic and should process all instructions
+        disassemble_chunk(&chunk, "complex sequence");
+    }
+
+    #[test]
+    fn test_disassemble_chunk_mixed_line_numbers() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Create chunk with mixed line numbers
+        chunk.write_chunk(OpCode::OpReturn as u8, 10);
+        chunk.write_chunk(OpCode::OpReturn as u8, 10); // Same line
+        chunk.write_chunk(OpCode::OpReturn as u8, 20); // Different line
+        chunk.write_chunk(OpCode::OpReturn as u8, 20); // Same line again
+
+        // This should handle the line number display correctly
+        disassemble_chunk(&chunk, "mixed lines");
+    }
+
+    #[test]
+    fn test_constant_instruction_with_various_values() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Test with various constant values
+        let _zero_index = chunk.add_constant(0.0);
+        let _neg_index = chunk.add_constant(-42.0);
+        let _large_index = chunk.add_constant(f64::MAX);
+        let _small_index = chunk.add_constant(f64::MIN_POSITIVE);
+
+        // Test disassembly of each by creating proper bytecode
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(0, 1);
+        let offset1 = constant_instruction("ZERO", &chunk, 0);
+        assert_eq!(offset1, 2);
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 2);
+        chunk.write_chunk(1, 2);
+        let offset2 = constant_instruction("NEG", &chunk, 2);
+        assert_eq!(offset2, 4);
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 3);
+        chunk.write_chunk(2, 3);
+        let offset3 = constant_instruction("LARGE", &chunk, 4);
+        assert_eq!(offset3, 6);
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 4);
+        chunk.write_chunk(3, 4);
+        let offset4 = constant_instruction("SMALL", &chunk, 6);
+        assert_eq!(offset4, 8);
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn test_disassemble_instruction_boundary_conditions() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Test with single instruction
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let offset = disassemble_instruction(&chunk, 0);
+        assert_eq!(offset, 1);
+
+        // Test that we don't go beyond chunk bounds - this should panic
+        disassemble_instruction(&chunk, 1);
     }
 }
