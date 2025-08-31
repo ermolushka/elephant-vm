@@ -11,6 +11,7 @@ pub enum OpCode {
 /**
  * a chunk of sequences of bytecodes, I will use Rust's Vec as a dynamic array to store the operation codes
  */
+#[derive(Clone)]
 pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: ValueArray,
@@ -67,7 +68,7 @@ mod tests {
     fn test_chunk_write_single() {
         let mut chunk = Chunk::init_chunk();
         chunk.write_chunk(OpCode::OpReturn as u8, 42);
-        
+
         assert_eq!(chunk.code.len(), 1);
         assert_eq!(chunk.lines.len(), 1);
         assert_eq!(chunk.code[0], OpCode::OpReturn as u8);
@@ -80,7 +81,7 @@ mod tests {
         chunk.write_chunk(OpCode::OpConstant as u8, 10);
         chunk.write_chunk(0, 10); // constant index
         chunk.write_chunk(OpCode::OpReturn as u8, 20);
-        
+
         assert_eq!(chunk.code.len(), 3);
         assert_eq!(chunk.lines.len(), 3);
         assert_eq!(chunk.code[0], OpCode::OpConstant as u8);
@@ -95,7 +96,7 @@ mod tests {
     fn test_chunk_add_constant_single() {
         let mut chunk = Chunk::init_chunk();
         let index = chunk.add_constant(3.14);
-        
+
         assert_eq!(index, 0);
         assert_eq!(chunk.constants.values.len(), 1);
         assert_eq!(chunk.constants.values[0], 3.14);
@@ -107,7 +108,7 @@ mod tests {
         let index1 = chunk.add_constant(1.1);
         let index2 = chunk.add_constant(2.2);
         let index3 = chunk.add_constant(3.3);
-        
+
         assert_eq!(index1, 0);
         assert_eq!(index2, 1);
         assert_eq!(index3, 2);
@@ -122,14 +123,14 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
         chunk.write_chunk(OpCode::OpReturn as u8, 42);
         chunk.add_constant(3.14);
-        
+
         // Verify data was added
         assert_eq!(chunk.code.len(), 1);
         assert_eq!(chunk.lines.len(), 1);
         assert_eq!(chunk.constants.values.len(), 1);
-        
+
         chunk.free_chunk();
-        
+
         assert!(chunk.code.is_empty());
         assert!(chunk.lines.is_empty());
         assert!(chunk.constants.values.is_empty());
@@ -138,32 +139,32 @@ mod tests {
     #[test]
     fn test_chunk_complete_workflow() {
         let mut chunk = Chunk::init_chunk();
-        
+
         // Add a constant and create bytecode for it
         let constant_index = chunk.add_constant(42.0);
         chunk.write_chunk(OpCode::OpConstant as u8, 100);
         chunk.write_chunk(constant_index as u8, 100);
-        
+
         // Add another constant
         let constant_index2 = chunk.add_constant(99.9);
         chunk.write_chunk(OpCode::OpConstant as u8, 200);
         chunk.write_chunk(constant_index2 as u8, 200);
-        
+
         // Add return instruction
         chunk.write_chunk(OpCode::OpReturn as u8, 300);
-        
+
         // Verify the complete state
         assert_eq!(chunk.constants.values.len(), 2);
         assert_eq!(chunk.constants.values[0], 42.0);
         assert_eq!(chunk.constants.values[1], 99.9);
-        
+
         assert_eq!(chunk.code.len(), 5);
         assert_eq!(chunk.code[0], OpCode::OpConstant as u8);
         assert_eq!(chunk.code[1], 0); // first constant index
         assert_eq!(chunk.code[2], OpCode::OpConstant as u8);
         assert_eq!(chunk.code[3], 1); // second constant index
         assert_eq!(chunk.code[4], OpCode::OpReturn as u8);
-        
+
         assert_eq!(chunk.lines.len(), 5);
         assert_eq!(chunk.lines[0], 100);
         assert_eq!(chunk.lines[1], 100);
