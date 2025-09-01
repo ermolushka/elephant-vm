@@ -30,6 +30,8 @@ impl<'a> Scanner<'a> {
     }
 
     pub fn scan_token(&mut self) -> Token {
+        // we skip all non-char items like whitespace, newlines, tabs etc
+        self.skip_whitespace();
         self.start = self.current;
         if self.is_at_end() {
             return self.make_token(TokenType::Eof)
@@ -108,7 +110,7 @@ impl<'a> Scanner<'a> {
             '\0'
         }
     }
-
+    // check for the next char for cases like: <=, ==, != etc
     pub fn match_char(&mut self, expected: char) -> bool {
         if self.is_at_end() {
             return false;
@@ -125,6 +127,24 @@ impl<'a> Scanner<'a> {
             }
         }
         false
+    }
+    pub fn skip_whitespace(&mut self) {
+        loop {
+            match self.peek() {
+                Some('\n') => self.line += 1,
+                Some(' ') | Some('\r') | Some('\t') => {
+                    self.advance();
+                },
+                _ => break,
+            }
+        }
+    }
+    // returns current char but doesn't advance the iterator
+    pub fn peek(&self) -> Option<char> {
+        if self.current >= self.source.len() {
+            return None;
+        }
+        self.source[self.current..].chars().next()
     }
 }
 
