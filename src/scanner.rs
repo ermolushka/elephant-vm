@@ -48,7 +48,6 @@ impl<'a> Scanner<'a> {
             '.' => self.make_token(TokenType::Dot),
             '-' => self.make_token(TokenType::Minus),
             '+' => self.make_token(TokenType::Plus),
-            '/' => self.make_token(TokenType::Slash),
             '*' => self.make_token(TokenType::Star),
             '!' => {
                 if self.match_char('=') {
@@ -76,6 +75,25 @@ impl<'a> Scanner<'a> {
                     self.make_token(TokenType::LessEqual)
                 } else {
                     self.make_token(TokenType::Less)
+                }
+            },
+            '/' => {
+                if self.peek_next() == Some('/') {
+                    // A comment goes until the end of the line.
+                    while let Some(c) = self.peek() {
+                        if c == '\n' || self.is_at_end() {
+                            break;
+                        }
+                        self.advance();
+                    }
+                    // Skip the newline character
+                    if let Some('\n') = self.peek() {
+                        self.advance();
+                    }
+                    // Continue scanning for the next token after the comment
+                    self.scan_token()
+                } else {
+                    self.make_token(TokenType::Slash)
                 }
             },
             _ => self.error_token("Unexpected character."),
@@ -145,6 +163,13 @@ impl<'a> Scanner<'a> {
             return None;
         }
         self.source[self.current..].chars().next()
+    }
+    // returns next char but doesn't advance the iterator
+    pub fn peek_next(&self) -> Option<char> {
+        if self.current + 1 >= self.source.len() {
+            return None;
+        }
+        self.source[self.current + 1..].chars().next()
     }
 }
 
