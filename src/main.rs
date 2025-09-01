@@ -2,13 +2,12 @@ use std::{env::args, process::exit};
 
 use crate::vm::*;
 
-
 mod chunk;
+mod compiler;
 mod debug;
+mod scanner;
 mod value;
 mod vm;
-mod compiler;
-mod scanner;
 fn main() {
     // init vm
     let mut vm: VM = VM::init_vm();
@@ -51,4 +50,3 @@ fn run_file(vm: &mut VM, file_path: &str) -> Result<(), ()> {
     }
     Ok(())
 }
-
