@@ -1,4 +1,4 @@
-use crate::{chunk::Chunk, debug::*, value::Value};
+use crate::{chunk::Chunk, compiler::Compiler, debug::*, value::Value};
 
 pub struct VM {
     pub chunk: Chunk,
@@ -39,7 +39,13 @@ impl VM {
         self.ip = 0;
     }
 
-    pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
+    pub fn interpret(&mut self, source: &str) -> InterpretResult {
+        let mut compiler = Compiler::new();
+        compiler.compile(source);
+        return InterpretResult::InterpretOk;
+    }
+
+    pub fn interpret_chunk(&mut self, chunk: &Chunk) -> InterpretResult {
         self.chunk = chunk.clone();
         self.ip = 0;
         self.run()
@@ -218,7 +224,7 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
@@ -232,7 +238,7 @@ mod tests {
         chunk.write_chunk(constant_index as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), 42.0);
     }
@@ -248,7 +254,7 @@ mod tests {
         chunk.write_chunk(OpCode::OpNegate as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), -10.0);
     }
@@ -268,7 +274,7 @@ mod tests {
         chunk.write_chunk(OpCode::OpAdd as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), 8.0);
     }
@@ -288,7 +294,7 @@ mod tests {
         chunk.write_chunk(OpCode::OpSubtract as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), 6.0);
     }
@@ -308,7 +314,7 @@ mod tests {
         chunk.write_chunk(OpCode::OpMultiply as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), 42.0);
     }
@@ -328,7 +334,7 @@ mod tests {
         chunk.write_chunk(OpCode::OpDivide as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), 4.0);
     }
@@ -371,7 +377,7 @@ mod tests {
 
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), 27.0);
     }
@@ -383,7 +389,7 @@ mod tests {
 
         chunk.write_chunk(255, 1); // Unknown opcode
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretRuntimeError));
     }
 
@@ -394,7 +400,7 @@ mod tests {
         let chunk = Chunk::init_chunk();
 
         // This should panic when trying to read from an empty chunk
-        vm.interpret(&chunk);
+        vm.interpret_chunk(&chunk);
     }
 
     #[test]
@@ -407,7 +413,7 @@ mod tests {
         chunk.write_chunk(const_index as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), -15.0);
     }
@@ -427,7 +433,7 @@ mod tests {
         chunk.write_chunk(OpCode::OpAdd as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert!((vm.stack_top() - 6.0).abs() < f64::EPSILON);
     }
@@ -447,7 +453,7 @@ mod tests {
         chunk.write_chunk(OpCode::OpDivide as u8, 1);
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
-        let result = vm.interpret(&chunk);
+        let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert!(vm.stack_top().is_infinite());
     }
