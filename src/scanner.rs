@@ -28,15 +28,24 @@ impl<'a> Scanner<'a> {
     pub fn is_at_end(&self) -> bool {
         self.current >= self.source.len()
     }
-
+    // entrypoint for the scanner
     pub fn scan_token(&mut self) -> Token {
         // we skip all non-char items like whitespace, newlines, tabs etc
         self.skip_whitespace();
+        // we set the start of the lexeme
         self.start = self.current;
         if self.is_at_end() {
             return self.make_token(TokenType::Eof);
         }
-        let c = self.advance();
+        let c: char = self.advance();
+        // check if it can be a variable
+        if self.is_alpha(Some(c)) {
+            return self.identifier();
+        }
+        // check if it's a number
+        if self.is_digit(Some(c)) {
+            return self.number();
+        }
         // single-character tokens
         match c {
             '(' => self.make_token(TokenType::LeftParen),
@@ -95,10 +104,129 @@ impl<'a> Scanner<'a> {
                     self.make_token(TokenType::Slash)
                 }
             }
+            '"' => self.scan_string(),
             _ => self.error_token("Unexpected character."),
         }
     }
 
+    pub fn is_digit(&self, c: Option<char>) -> bool {
+        if c.is_none() {
+            return false;
+        }
+        let c = c.unwrap();
+        c >= '0' && c <= '9'
+    }
+
+    pub fn number(&mut self) -> Token {
+        while self.is_digit(self.peek()) {
+            self.advance();
+        }
+        if self.peek() == Some('.') && self.is_digit(self.peek_next()) {
+            // consume the dot
+            self.advance();
+            while self.is_digit(self.peek()) {
+                self.advance();
+            }
+        }
+        self.make_token(TokenType::Number)
+    }
+
+    pub fn scan_string(&mut self) -> Token {
+        while self.peek() != Some('"') && !self.is_at_end() {
+            // multi-line strings
+            if self.peek() == Some('\n') {
+                self.line += 1;
+            }
+            self.advance();
+        }
+        if self.is_at_end() {
+            return self.error_token("Unterminated string.");
+        }
+        // The closing quote
+        self.advance();
+        self.make_token(TokenType::String)
+    }
+
+    pub fn is_alpha(&self, c: Option<char>) -> bool {
+        if c.is_none() {
+            return false;
+        }
+        let c = c.unwrap();
+        c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_'
+    }
+    // for variables (built-in and user-defined)
+    pub fn identifier(&mut self) -> Token {
+        while self.is_alpha(self.peek()) || self.is_digit(self.peek()) {
+            self.advance();
+        }
+        self.make_token(self.identifier_type())
+    }
+
+    pub fn identifier_type(&self) -> TokenType {
+        // current lexeme
+        let lexeme = &self.source[self.start..self.current];
+        if lexeme.is_empty() {
+            return TokenType::Identifier;
+        }
+        // kind of Trie algorithm but dumb
+        match lexeme.chars().next().unwrap() {
+            'a' => self.check_keyword(1, 2, "nd", TokenType::And),
+            'c' => self.check_keyword(1, 4, "lass", TokenType::Class),
+            'e' => self.check_keyword(1, 3, "lse", TokenType::Else),
+            'f' => {
+                if lexeme.len() > 1 {
+                    match lexeme.chars().nth(1).unwrap() {
+                        'a' => self.check_keyword(2, 3, "lse", TokenType::False),
+                        'o' => self.check_keyword(2, 1, "r", TokenType::For),
+                        'u' => self.check_keyword(2, 1, "n", TokenType::Fun),
+                        _ => TokenType::Identifier,
+                    }
+                } else {
+                    TokenType::Identifier
+                }
+            }
+            'i' => self.check_keyword(1, 1, "f", TokenType::If),
+            'n' => self.check_keyword(1, 2, "il", TokenType::Nil),
+            'o' => self.check_keyword(1, 1, "r", TokenType::Or),
+            'p' => self.check_keyword(1, 4, "rint", TokenType::Print),
+            'r' => self.check_keyword(1, 5, "eturn", TokenType::Return),
+            's' => self.check_keyword(1, 4, "uper", TokenType::Super),
+            't' => {
+                if lexeme.len() > 1 {
+                    match lexeme.chars().nth(1).unwrap() {
+                        'h' => self.check_keyword(2, 2, "is", TokenType::This),
+                        'r' => self.check_keyword(2, 2, "ue", TokenType::True),
+                        _ => TokenType::Identifier,
+                    }
+                } else {
+                    TokenType::Identifier
+                }
+            }
+            'v' => self.check_keyword(1, 2, "ar", TokenType::Var),
+            'w' => self.check_keyword(1, 4, "hile", TokenType::While),
+            _ => TokenType::Identifier,
+        }
+    }
+
+    pub fn check_keyword(
+        &self,
+        start: usize,
+        length: usize,
+        rest: &str,
+        token_type: TokenType,
+    ) -> TokenType {
+        let current_length = self.current - self.start;
+        if current_length == start + length {
+            // we match the lexeme with the rest of the keyword
+            let lexeme = &self.source[self.start..self.current];
+            if lexeme.len() > start && &lexeme[start..] == rest {
+                return token_type;
+            }
+        }
+        // if it doesn't match, it's an identifier (user-defined)
+        TokenType::Identifier
+    }
+    // just a helper function to create a token
     pub fn make_token(&self, token_type: TokenType) -> Token {
         Token {
             token_type,
@@ -108,7 +236,7 @@ impl<'a> Scanner<'a> {
         }
     }
     pub fn error_token(&self, message: &str) -> Token {
-        println!("{}", message);
+        println!("error {}", message);
         Token {
             token_type: TokenType::Error,
             start: self.start,
@@ -525,6 +653,40 @@ mod tests {
         for expected_type in expected_tokens.iter() {
             let token = scanner.scan_token();
             assert_eq!(token.token_type, *expected_type);
+        }
+    }
+
+    #[test]
+    fn test_scanner_keywords() {
+        let test_cases = [
+            ("and", TokenType::And),
+            ("class", TokenType::Class),
+            ("else", TokenType::Else),
+            ("false", TokenType::False),
+            ("for", TokenType::For),
+            ("fun", TokenType::Fun),
+            ("if", TokenType::If),
+            ("nil", TokenType::Nil),
+            ("or", TokenType::Or),
+            ("print", TokenType::Print),
+            ("return", TokenType::Return),
+            ("super", TokenType::Super),
+            ("this", TokenType::This),
+            ("true", TokenType::True),
+            ("var", TokenType::Var),
+            ("while", TokenType::While),
+            ("identifier", TokenType::Identifier), // Non-keyword
+            ("andnot", TokenType::Identifier),     // Partial match
+        ];
+
+        for (input, expected_type) in test_cases.iter() {
+            let mut scanner = Scanner::new(input);
+            let token = scanner.scan_token();
+            assert_eq!(
+                token.token_type, *expected_type,
+                "Failed for input: '{}', expected {:?}, got {:?}",
+                input, expected_type, token.token_type
+            );
         }
     }
 }

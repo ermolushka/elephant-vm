@@ -18,11 +18,14 @@ impl<'a> Compiler<'a> {
             let token = self.scanner.scan_token();
             if token.line != line {
                 line = token.line;
-                println!("{}", token.line);
+                print!("line: {} ", token.line);
             } else {
-                print!("     |");
+                print!("     | ");
             }
-            println!("{:?} {} {}", token.token_type, token.start, token.length);
+            println!(
+                "token: {:?} token_start: {} token_length: {}",
+                token.token_type, token.start, token.length
+            );
             if token.token_type == TokenType::Eof {
                 break;
             }
