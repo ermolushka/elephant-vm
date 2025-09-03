@@ -303,6 +303,7 @@ impl<'a> Scanner<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Token {
     pub token_type: TokenType,
     pub start: usize,
