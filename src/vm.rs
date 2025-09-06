@@ -41,8 +41,19 @@ impl VM {
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
         let mut compiler = Compiler::new();
-        compiler.compile(source);
-        return InterpretResult::InterpretOk;
+        // we create an empty chunk and pass to compiler
+        // it will fill up the chunk with the bytecode
+        let mut chunk = Chunk::init_chunk();
+        if !compiler.compile(source, &mut chunk) {
+            return InterpretResult::InterpretCompileError;
+        }
+        // if all good, we interpret the chunk
+        let result = self.interpret_chunk(&chunk);
+        match result {
+            InterpretResult::InterpretOk => InterpretResult::InterpretOk,
+            InterpretResult::InterpretCompileError => InterpretResult::InterpretCompileError,
+            InterpretResult::InterpretRuntimeError => InterpretResult::InterpretRuntimeError,
+        }
     }
 
     pub fn interpret_chunk(&mut self, chunk: &Chunk) -> InterpretResult {
