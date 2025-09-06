@@ -178,14 +178,94 @@ For the expression `1 + 2 * 3`:
 ## Current Status
 
 ✅ **Completed**:
-- Scanner with full tokenization
-- VM with arithmetic operations
-- Chunk and value management
-- Basic error handling
-- Comprehensive test coverage
+- **Scanner (`src/scanner.rs`)**: Full tokenization with comprehensive test coverage
+  - Single/multi-character tokens, keywords, identifiers, numbers, strings
+  - Comment handling, line tracking, error reporting
+  - UTF-8 support and whitespace handling
+- **VM (`src/vm.rs`)**: Bytecode execution engine
+  - Stack-based arithmetic operations
+  - Constant loading and manipulation
+  - Error handling and debugging support
+- **Chunk (`src/chunk.rs`)**: Bytecode storage and management
+  - Dynamic bytecode arrays with constant pools
+  - Line number tracking for debugging
+- **Value System (`src/value.rs`)**: Runtime value representation
+- **Debug System (`src/debug.rs`)**: Disassembly and debugging tools
+- **Compiler (`src/compiler.rs`)**: **Pratt parser implementation with expression parsing**
+  - ✅ **Number literals** - Parse and emit constants for numeric values
+  - ✅ **Binary operations** - Addition, subtraction, multiplication, division with correct precedence
+  - ✅ **Unary operations** - Negation support
+  - ✅ **Grouping** - Parentheses for expression precedence override
+  - ✅ **Parse rules** - Token-to-function mapping with precedence handling
+  - ✅ **Error handling** - Panic mode error recovery
+  - ✅ **Precedence parsing** - Operator precedence climbing algorithm
 
 🚧 **In Progress**:
-- Compiler expression parsing (marked as `todo!()`)
+- Complete compiler integration testing (some edge case handling)
+- Additional language features (variables, control flow, functions)
+
+## Testing
+
+**Comprehensive Test Coverage - 134+ Tests**:
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run specific test module
+cargo test compiler::tests
+cargo test scanner::tests
+cargo test vm::tests
+```
+
+**Test Coverage**:
+- **Scanner (25+ tests)**: Tokenization, keywords, strings, numbers, comments, whitespace, UTF-8, error handling
+- **Compiler (25+ tests)**: Expression parsing, binary/unary operations, precedence, error handling, bytecode generation  
+- **VM (20+ tests)**: Arithmetic operations, stack management, constant handling, error cases
+- **Chunk (15+ tests)**: Bytecode storage, constant pools, line tracking
+- **Value (10+ tests)**: Value operations and conversions
+- **Debug (25+ tests)**: Disassembly, instruction formatting
+
+## Architecture Details
+
+### Expression Parsing (Pratt Parser)
+
+The compiler uses a **Pratt parser** (top-down operator precedence) for expression parsing:
+
+```rust
+// Precedence levels (lowest to highest)
+PrecNone → PrecAssignment → PrecOr → PrecAnd → 
+PrecEquality → PrecComparison → PrecTerm → 
+PrecFactor → PrecUnary → PrecCall → PrecPrimary
+```
+
+**Parse Rules Table**:
+- `TokenType::Number` → `prefix: number()` (parse numeric literals)
+- `TokenType::Minus` → `prefix: unary()`, `infix: binary()` (negation and subtraction)
+- `TokenType::Plus` → `infix: binary()` (addition)
+- `TokenType::Star/Slash` → `infix: binary()` (multiplication/division)  
+- `TokenType::LeftParen` → `prefix: grouping()` (parentheses)
+
+**Compilation Flow**:
+1. `parse_precedence()` - Handles operator precedence
+2. Parse prefix expression (numbers, unary ops, grouping)
+3. Parse infix expressions while precedence allows
+4. Emit appropriate bytecode instructions
+
+### Bytecode Generation
+
+**Example**: `1 + 2 * 3` generates:
+```
+OP_CONSTANT 0  // Push 1
+OP_CONSTANT 1  // Push 2  
+OP_CONSTANT 2  // Push 3
+OP_MULTIPLY    // 2 * 3
+OP_ADD         // 1 + (result)
+OP_RETURN      // Return top of stack
+```
 
 ## Usage
 
@@ -195,19 +275,49 @@ cargo run script.el
 
 # Interactive mode (basic)
 cargo run
-```
 
-## Testing
+# Build optimized
+cargo build --release
 
-The project includes comprehensive unit tests for all components:
-
-```bash
+# Run all tests
 cargo test
+
+# Run with debugging output
+RUST_LOG=debug cargo run
 ```
 
-Tests cover:
-- Scanner tokenization
-- VM execution
-- Chunk operations
-- Value management
-- Error handling
+## Development
+
+**Project Structure**:
+```
+src/
+├── main.rs          # Entry point, REPL/file execution
+├── scanner.rs       # Lexical analysis (25+ tests)
+├── compiler.rs      # Parsing & bytecode generation (25+ tests) 
+├── vm.rs           # Bytecode execution (20+ tests)
+├── chunk.rs        # Bytecode storage (15+ tests)
+├── value.rs        # Runtime values (10+ tests)
+└── debug.rs        # Disassembly tools (25+ tests)
+```
+
+**Adding New Features**:
+1. Extend `TokenType` enum in `scanner.rs`
+2. Add parsing rules in `compiler.rs`
+3. Implement bytecode operations in `vm.rs`
+4. Add comprehensive tests for new functionality
+
+## Language Features Supported
+
+✅ **Expressions**:
+- Numeric literals: `42`, `3.14159`
+- Binary operators: `+`, `-`, `*`, `/` with correct precedence
+- Unary operators: `-` (negation)
+- Grouping: `(expression)`
+- Complex expressions: `(1 + 2) * 3 - 4 / 2`
+
+🚧 **Planned**:
+- Variables and assignment
+- Boolean literals and logic operators  
+- Control flow (if/else, loops)
+- Function definitions and calls
+- String operations

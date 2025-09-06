@@ -15,7 +15,7 @@ fn main() {
         repl();
     } else if args().len() == 2 {
         let file_path = args().nth(1).unwrap();
-        run_file(&mut vm, &file_path);
+        let _ = run_file(&mut vm, &file_path);
     } else {
         println!("Usage: lox [script]");
         exit(64);
