@@ -1,10 +1,15 @@
-use crate::{chunk::Chunk, scanner::{Scanner, Token, TokenType}};
+use crate::{
+    chunk::{Chunk, OpCode},
+    scanner::{Scanner, Token, TokenType},
+    value::Value,
+};
 
 pub struct Parser {
     pub current: Token,
     pub previous: Token,
     pub had_error: bool,
     pub panic_mode: bool,
+    pub chunk: Chunk,
 }
 
 pub struct Compiler<'a> {
@@ -17,16 +22,28 @@ impl<'a> Compiler<'a> {
         Self {
             scanner: Scanner::new(""), // temporary empty string, will be set in compile
             parser: Parser {
-                current: Token {token_type: TokenType::Eof, start: 0, length: 0, line: 0},
-                previous: Token {token_type: TokenType::Eof, start: 0, length: 0, line: 0},
+                current: Token {
+                    token_type: TokenType::Eof,
+                    start: 0,
+                    length: 0,
+                    line: 0,
+                },
+                previous: Token {
+                    token_type: TokenType::Eof,
+                    start: 0,
+                    length: 0,
+                    line: 0,
+                },
                 had_error: false,
                 panic_mode: false,
+                chunk: Chunk::init_chunk(),
             },
         }
     }
 
     pub fn compile(&mut self, source: &'a str, chunk: &mut Chunk) -> bool {
         self.scanner.init_scanner(source);
+        self.parser.chunk = chunk.clone();
         self.advance();
         // parsing a single expression
         self.expression();
@@ -60,9 +77,13 @@ impl<'a> Compiler<'a> {
         if token.token_type == TokenType::Eof {
             println!(" at end");
         } else {
-            println!("[line {} start {}] Error: {}", token.line, token.start, message);
-        }        
+            println!(
+                "[line {} start {}] Error: {}",
+                token.line, token.start, message
+            );
+        }
         println!();
+        self.end_compiler();
         self.parser.had_error = true;
     }
 
@@ -77,8 +98,47 @@ impl<'a> Compiler<'a> {
         return self.parser.previous;
     }
 
+    pub fn emit_byte(&mut self, byte: u8) {
+        self.parser
+            .chunk
+            .write_chunk(byte, self.parser.previous.line as u32);
+    }
+
     pub fn expression(&mut self) {
+        // for now we will have only:
+        // number literals
+        // parentheses for grouping
+        // unary negation
         todo!()
+    }
+
+    pub fn end_compiler(&mut self) {
+        self.emit_return();
+    }
+
+    pub fn emit_return(&mut self) {
+        self.emit_byte(OpCode::OpReturn as u8);
+    }
+
+    pub fn emit_bytes(&mut self, byte1: u8, byte2: u8) {
+        self.emit_byte(byte1);
+        self.emit_byte(byte2);
+    }
+
+    pub fn emit_constant(&mut self, value: Value) {
+        let constant_index = self.make_constant(value);
+        self.emit_bytes(OpCode::OpConstant as u8, constant_index as u8);
+    }
+
+    pub fn make_constant(&mut self, value: Value) -> usize {
+        self.parser.chunk.add_constant(value)
+    }
+
+    pub fn number(&mut self) {
+        let lexeme = &self.scanner.source
+            [self.parser.previous.start..self.parser.previous.start + self.parser.previous.length];
+        let value: f64 = lexeme.parse().unwrap_or(0.0);
+        self.emit_constant(value);
     }
 }
 
