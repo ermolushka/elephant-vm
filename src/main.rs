@@ -12,7 +12,7 @@ fn main() {
     // init vm
     let mut vm: VM = VM::init_vm();
     if args().len() == 1 {
-        repl();
+        repl(&mut vm);
     } else if args().len() == 2 {
         let file_path = args().nth(1).unwrap();
         let _ = run_file(&mut vm, &file_path);
@@ -24,13 +24,14 @@ fn main() {
     vm.free_vm();
 }
 
-fn repl() {
+fn repl(vm: &mut VM) {
     println!("Welcome to the Lox repl!");
     loop {
         print!("> ");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
         println!("{}", input);
+        let _ =vm.interpret(input.as_str());
     }
 }
 
