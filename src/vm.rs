@@ -156,6 +156,34 @@ impl VM {
                     self.push(constant);
 
                 },
+                OP_NIL => {
+                    self.push(Value::new_nil());
+                },
+                OP_TRUE => {
+                    self.push(Value::new_bool(true));
+                },
+                OP_FALSE => {
+                    self.push(Value::new_bool(false));
+                },
+                OP_EQUAL => {
+                    let value2 = self.pop();
+                    let value1 = self.pop();
+                    self.push(Value::new_bool(value1.values_equal(&value2)));
+                },
+                OP_GREATER => {
+                    let value2 = self.pop();
+                    let value1 = self.pop();
+                    self.push(Value::new_bool(value1.as_number().unwrap() > value2.as_number().unwrap()));
+                },
+                OP_LESS => {
+                    let value2 = self.pop();
+                    let value1 = self.pop();
+                    self.push(Value::new_bool(value1.as_number().unwrap() < value2.as_number().unwrap()));
+                },
+                OP_NOT => {
+                    let value = self.pop();
+                    self.push(Value::new_bool(value.is_falsy()));
+                },
                 _ => return InterpretResult::InterpretRuntimeError,
             }
         }
@@ -507,5 +535,296 @@ mod tests {
         let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert!(vm.stack_top().as_number().unwrap().is_infinite());
+    }
+
+    // Tests for new boolean and nil operations
+
+    #[test]
+    fn test_vm_interpret_nil() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        chunk.write_chunk(OP_NIL, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_nil());
+        assert!(vm.stack_top().is_nil());
+    }
+
+    #[test]
+    fn test_vm_interpret_true() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        chunk.write_chunk(OP_TRUE, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+        assert!(vm.stack_top().is_bool());
+        assert_eq!(vm.stack_top().as_bool().unwrap(), true);
+    }
+
+    #[test]
+    fn test_vm_interpret_false() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        chunk.write_chunk(OP_FALSE, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(false));
+        assert!(vm.stack_top().is_bool());
+        assert_eq!(vm.stack_top().as_bool().unwrap(), false);
+    }
+
+    #[test]
+    fn test_vm_interpret_equal_numbers() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        let const1_index = chunk.add_constant(Value::new_number(42.0));
+        let const2_index = chunk.add_constant(Value::new_number(42.0));
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const1_index as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const2_index as u8, 1);
+        chunk.write_chunk(OP_EQUAL, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_vm_interpret_equal_bools() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        chunk.write_chunk(OP_TRUE, 1);
+        chunk.write_chunk(OP_TRUE, 1);
+        chunk.write_chunk(OP_EQUAL, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_vm_interpret_equal_nils() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        chunk.write_chunk(OP_NIL, 1);
+        chunk.write_chunk(OP_NIL, 1);
+        chunk.write_chunk(OP_EQUAL, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_vm_interpret_not_equal_different_types() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        let const_index = chunk.add_constant(Value::new_number(42.0));
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index as u8, 1);
+        chunk.write_chunk(OP_TRUE, 1);
+        chunk.write_chunk(OP_EQUAL, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(false));
+    }
+
+    #[test]
+    fn test_vm_interpret_greater() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        let const1_index = chunk.add_constant(Value::new_number(5.0));
+        let const2_index = chunk.add_constant(Value::new_number(3.0));
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const1_index as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const2_index as u8, 1);
+        chunk.write_chunk(OP_GREATER, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_vm_interpret_greater_false() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        let const1_index = chunk.add_constant(Value::new_number(3.0));
+        let const2_index = chunk.add_constant(Value::new_number(5.0));
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const1_index as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const2_index as u8, 1);
+        chunk.write_chunk(OP_GREATER, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(false));
+    }
+
+    #[test]
+    fn test_vm_interpret_less() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        let const1_index = chunk.add_constant(Value::new_number(3.0));
+        let const2_index = chunk.add_constant(Value::new_number(5.0));
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const1_index as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const2_index as u8, 1);
+        chunk.write_chunk(OP_LESS, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_vm_interpret_less_false() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        let const1_index = chunk.add_constant(Value::new_number(5.0));
+        let const2_index = chunk.add_constant(Value::new_number(3.0));
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const1_index as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const2_index as u8, 1);
+        chunk.write_chunk(OP_LESS, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(false));
+    }
+
+    #[test]
+    fn test_vm_interpret_not_true() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        chunk.write_chunk(OP_TRUE, 1);
+        chunk.write_chunk(OP_NOT, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(false));
+    }
+
+    #[test]
+    fn test_vm_interpret_not_false() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        chunk.write_chunk(OP_FALSE, 1);
+        chunk.write_chunk(OP_NOT, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_vm_interpret_not_nil() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        chunk.write_chunk(OP_NIL, 1);
+        chunk.write_chunk(OP_NOT, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_vm_interpret_not_number() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        let const_index = chunk.add_constant(Value::new_number(42.0));
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index as u8, 1);
+        chunk.write_chunk(OP_NOT, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(false)); // Numbers are truthy
+    }
+
+    #[test]
+    fn test_vm_interpret_complex_boolean_expression() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        // Test: !(true == false)
+        chunk.write_chunk(OP_TRUE, 1);
+        chunk.write_chunk(OP_FALSE, 1);
+        chunk.write_chunk(OP_EQUAL, 1);
+        chunk.write_chunk(OP_NOT, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_vm_interpret_comparison_chain() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        // Test: 5 > 3 == true
+        let const5_index = chunk.add_constant(Value::new_number(5.0));
+        let const3_index = chunk.add_constant(Value::new_number(3.0));
+
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const5_index as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const3_index as u8, 1);
+        chunk.write_chunk(OP_GREATER, 1);
+        chunk.write_chunk(OP_TRUE, 1);
+        chunk.write_chunk(OP_EQUAL, 1);
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(true));
     }
 }

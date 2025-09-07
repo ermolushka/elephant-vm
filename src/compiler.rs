@@ -134,7 +134,7 @@ impl<'a> ParseRules<'a> {
         rules.insert(
             TokenType::Bang,
             ParseRule {
-                prefix: None,
+                prefix: Some(Compiler::unary),
                 infix: None,
                 precedence: Precedence::PrecNone,
             },
@@ -143,8 +143,8 @@ impl<'a> ParseRules<'a> {
             TokenType::BangEqual,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::PrecEquality,
             },
         );
         rules.insert(
@@ -159,40 +159,40 @@ impl<'a> ParseRules<'a> {
             TokenType::EqualEqual,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::PrecEquality,
             },
         );
         rules.insert(
             TokenType::Greater,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::PrecComparison,
             },
         );
         rules.insert(
             TokenType::GreaterEqual,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::PrecComparison,
             },
         );
         rules.insert(
             TokenType::Less,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::PrecComparison,
             },
         );
         rules.insert(
             TokenType::LessEqual,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::PrecComparison,
             },
         );
         rules.insert(
@@ -246,7 +246,7 @@ impl<'a> ParseRules<'a> {
         rules.insert(
             TokenType::False,
             ParseRule {
-                prefix: None,
+                prefix: Some(Compiler::literal),
                 infix: None,
                 precedence: Precedence::PrecNone,
             },
@@ -278,7 +278,7 @@ impl<'a> ParseRules<'a> {
         rules.insert(
             TokenType::Nil,
             ParseRule {
-                prefix: None,
+                prefix: Some(Compiler::literal),
                 infix: None,
                 precedence: Precedence::PrecNone,
             },
@@ -326,7 +326,7 @@ impl<'a> ParseRules<'a> {
         rules.insert(
             TokenType::True,
             ParseRule {
-                prefix: None,
+                prefix: Some(Compiler::literal),
                 infix: None,
                 precedence: Precedence::PrecNone,
             },
@@ -550,7 +550,7 @@ impl<'a> Compiler<'a> {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
-    // undary negation
+    // unary negation and logical not
     pub fn unary(&mut self) {
         // the leading token has been consumed and is sitting
         // in self.parser.previous
@@ -559,7 +559,8 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(Precedence::PrecUnary);
         match operator_type {
             TokenType::Minus => self.emit_byte(OpCode::OpNegate as u8),
-            _ => self.error_at_current("Expect '-' before expression."),
+            TokenType::Bang => self.emit_byte(OpCode::OpNot as u8),
+            _ => self.error_at_current("Expect '-' or '!' before expression."),
         }
     }
     // +, -, *, /
@@ -579,6 +580,12 @@ impl<'a> Compiler<'a> {
             TokenType::Minus => self.emit_byte(OpCode::OpSubtract as u8),
             TokenType::Star => self.emit_byte(OpCode::OpMultiply as u8),
             TokenType::Slash => self.emit_byte(OpCode::OpDivide as u8),
+            TokenType::EqualEqual => self.emit_byte(OpCode::OpEqual as u8),
+            TokenType::BangEqual => self.emit_bytes(OpCode::OpEqual as u8, OpCode::OpNot as u8),
+            TokenType::Greater => self.emit_byte(OpCode::OpGreater as u8),
+            TokenType::GreaterEqual => self.emit_bytes(OpCode::OpLess as u8, OpCode::OpNot as u8),
+            TokenType::Less => self.emit_byte(OpCode::OpLess as u8),
+            TokenType::LessEqual => self.emit_bytes(OpCode::OpGreater as u8, OpCode::OpNot as u8),
             _ => self.error_at_current("Expect '+' or '-' or '*' or '/' before expression."),
         }
     }
@@ -608,6 +615,15 @@ impl<'a> Compiler<'a> {
             Precedence::PrecUnary => Precedence::PrecCall,
             Precedence::PrecCall => Precedence::PrecPrimary,
             Precedence::PrecPrimary => Precedence::PrecPrimary,
+        }
+    }
+
+    pub fn literal(&mut self) {
+        match self.parser.previous.token_type {
+            TokenType::True => self.emit_byte(OpCode::OpTrue as u8),
+            TokenType::False => self.emit_byte(OpCode::OpFalse as u8),
+            TokenType::Nil => self.emit_byte(OpCode::OpNil as u8),
+            _ => self.error_at_current("Expect 'true', 'false' or 'nil'."),
         }
     }
 }
@@ -1096,5 +1112,256 @@ mod tests {
         assert!(result);
         
         assert_eq!(chunk.constants.values[0], Value::new_number(3.141592653589793));
+    }
+
+    // Tests for new literal parsing
+
+    #[test]
+    fn test_compiler_literal_true() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("true", &mut chunk);
+        assert!(result);
+
+        // Should emit OP_TRUE followed by OP_RETURN
+        assert_eq!(chunk.code.len(), 2);
+        assert_eq!(chunk.code[0], OpCode::OpTrue as u8);
+        assert_eq!(chunk.code[1], OpCode::OpReturn as u8);
+        assert_eq!(chunk.constants.values.len(), 0); // No constants needed for literals
+    }
+
+    #[test]
+    fn test_compiler_literal_false() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("false", &mut chunk);
+        assert!(result);
+
+        // Should emit OP_FALSE followed by OP_RETURN
+        assert_eq!(chunk.code.len(), 2);
+        assert_eq!(chunk.code[0], OpCode::OpFalse as u8);
+        assert_eq!(chunk.code[1], OpCode::OpReturn as u8);
+        assert_eq!(chunk.constants.values.len(), 0); // No constants needed for literals
+    }
+
+    #[test]
+    fn test_compiler_literal_nil() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("nil", &mut chunk);
+        assert!(result);
+
+        // Should emit OP_NIL followed by OP_RETURN
+        assert_eq!(chunk.code.len(), 2);
+        assert_eq!(chunk.code[0], OpCode::OpNil as u8);
+        assert_eq!(chunk.code[1], OpCode::OpReturn as u8);
+        assert_eq!(chunk.constants.values.len(), 0); // No constants needed for literals
+    }
+
+    #[test]
+    fn test_compiler_unary_not_true() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("!true", &mut chunk);
+        assert!(result);
+
+        // Should emit OP_TRUE, OP_NOT, OP_RETURN
+        assert_eq!(chunk.code.len(), 3);
+        assert_eq!(chunk.code[0], OpCode::OpTrue as u8);
+        assert_eq!(chunk.code[1], OpCode::OpNot as u8);
+        assert_eq!(chunk.code[2], OpCode::OpReturn as u8);
+    }
+
+    #[test]
+    fn test_compiler_unary_not_false() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("!false", &mut chunk);
+        assert!(result);
+
+        // Should emit OP_FALSE, OP_NOT, OP_RETURN
+        assert_eq!(chunk.code.len(), 3);
+        assert_eq!(chunk.code[0], OpCode::OpFalse as u8);
+        assert_eq!(chunk.code[1], OpCode::OpNot as u8);
+        assert_eq!(chunk.code[2], OpCode::OpReturn as u8);
+    }
+
+    #[test]
+    fn test_compiler_unary_not_nil() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("!nil", &mut chunk);
+        assert!(result);
+
+        // Should emit OP_NIL, OP_NOT, OP_RETURN
+        assert_eq!(chunk.code.len(), 3);
+        assert_eq!(chunk.code[0], OpCode::OpNil as u8);
+        assert_eq!(chunk.code[1], OpCode::OpNot as u8);
+        assert_eq!(chunk.code[2], OpCode::OpReturn as u8);
+    }
+
+    // Tests for new binary operations
+
+    #[test]
+    fn test_compiler_binary_equal() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("5 == 5", &mut chunk);
+        assert!(result);
+
+        // Should have: OP_CONSTANT 5, OP_CONSTANT 5, OP_EQUAL, OP_RETURN
+        assert_eq!(chunk.code.len(), 6);
+        assert_eq!(chunk.code[4], OpCode::OpEqual as u8);
+        assert_eq!(chunk.constants.values[0], Value::new_number(5.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(5.0));
+    }
+
+    #[test]
+    fn test_compiler_binary_not_equal() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("5 != 3", &mut chunk);
+        assert!(result);
+
+        // Should have: OP_CONSTANT 5, OP_CONSTANT 3, OP_EQUAL, OP_NOT, OP_RETURN
+        assert_eq!(chunk.code.len(), 7);
+        assert_eq!(chunk.code[4], OpCode::OpEqual as u8);
+        assert_eq!(chunk.code[5], OpCode::OpNot as u8);
+        assert_eq!(chunk.constants.values[0], Value::new_number(5.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(3.0));
+    }
+
+    #[test]
+    fn test_compiler_binary_greater() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("7 > 3", &mut chunk);
+        assert!(result);
+
+        // Should have: OP_CONSTANT 7, OP_CONSTANT 3, OP_GREATER, OP_RETURN
+        assert_eq!(chunk.code.len(), 6);
+        assert_eq!(chunk.code[4], OpCode::OpGreater as u8);
+        assert_eq!(chunk.constants.values[0], Value::new_number(7.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(3.0));
+    }
+
+    #[test]
+    fn test_compiler_binary_greater_equal() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("7 >= 3", &mut chunk);
+        assert!(result);
+
+        // Should have: OP_CONSTANT 7, OP_CONSTANT 3, OP_LESS, OP_NOT, OP_RETURN
+        assert_eq!(chunk.code.len(), 7);
+        assert_eq!(chunk.code[4], OpCode::OpLess as u8);
+        assert_eq!(chunk.code[5], OpCode::OpNot as u8);
+        assert_eq!(chunk.constants.values[0], Value::new_number(7.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(3.0));
+    }
+
+    #[test]
+    fn test_compiler_binary_less() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("3 < 7", &mut chunk);
+        assert!(result);
+
+        // Should have: OP_CONSTANT 3, OP_CONSTANT 7, OP_LESS, OP_RETURN
+        assert_eq!(chunk.code.len(), 6);
+        assert_eq!(chunk.code[4], OpCode::OpLess as u8);
+        assert_eq!(chunk.constants.values[0], Value::new_number(3.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(7.0));
+    }
+
+    #[test]
+    fn test_compiler_binary_less_equal() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("3 <= 7", &mut chunk);
+        assert!(result);
+
+        // Should have: OP_CONSTANT 3, OP_CONSTANT 7, OP_GREATER, OP_NOT, OP_RETURN
+        assert_eq!(chunk.code.len(), 7);
+        assert_eq!(chunk.code[4], OpCode::OpGreater as u8);
+        assert_eq!(chunk.code[5], OpCode::OpNot as u8);
+        assert_eq!(chunk.constants.values[0], Value::new_number(3.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(7.0));
+    }
+
+    #[test]
+    fn test_compiler_mixed_boolean_and_number_comparison() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("true == true", &mut chunk);
+        assert!(result);
+
+        // Should have: OP_TRUE, OP_TRUE, OP_EQUAL, OP_RETURN
+        assert_eq!(chunk.code.len(), 4);
+        assert_eq!(chunk.code[0], OpCode::OpTrue as u8);
+        assert_eq!(chunk.code[1], OpCode::OpTrue as u8);
+        assert_eq!(chunk.code[2], OpCode::OpEqual as u8);
+        assert_eq!(chunk.code[3], OpCode::OpReturn as u8);
+        assert_eq!(chunk.constants.values.len(), 0); // No constants for boolean literals
+    }
+
+    #[test]
+    fn test_compiler_complex_comparison_expression() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("!(5 > 3)", &mut chunk);
+        assert!(result);
+
+        // Should handle precedence correctly: 5, 3, >, !, return
+        assert!(chunk.code.contains(&(OpCode::OpGreater as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpNot as u8)));
+        assert_eq!(chunk.constants.values[0], Value::new_number(5.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(3.0));
+    }
+
+    #[test]
+    fn test_compiler_chained_comparisons() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("5 > 3 == true", &mut chunk);
+        assert!(result);
+
+        // Should properly handle precedence: 5 > 3 first, then == true
+        assert!(chunk.code.contains(&(OpCode::OpGreater as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpEqual as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpTrue as u8)));
+        assert_eq!(chunk.constants.values[0], Value::new_number(5.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(3.0));
+    }
+
+    #[test]
+    fn test_compiler_precedence_comparison_vs_arithmetic() {
+        let mut compiler = Compiler::new();
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("2 + 3 > 4", &mut chunk);
+        assert!(result);
+
+        // Should handle precedence: 2 + 3 first, then > 4
+        assert!(chunk.code.contains(&(OpCode::OpAdd as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpGreater as u8)));
+        assert_eq!(chunk.constants.values[0], Value::new_number(2.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(3.0));
+        assert_eq!(chunk.constants.values[2], Value::new_number(4.0));
     }
 }

@@ -44,6 +44,23 @@ impl Value {
     pub fn new_number(value: f64) -> Self {
         Value::Number(value)
     }
+
+    pub fn values_equal(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Nil, Value::Nil) => true,
+            (Value::Number(a), Value::Number(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    pub fn is_falsy(&self) -> bool {
+        match self {
+            Value::Nil => true,
+            Value::Bool(false) => true,
+            _ => false,
+        }
+    }
 }
 
 // constant pool as array of values
@@ -244,5 +261,143 @@ mod tests {
         // Test negation
         assert_eq!(Value::new_number(-a.as_number().unwrap()), Value::new_number(-10.5));
         assert_eq!(Value::new_number(-b.as_number().unwrap()), Value::new_number(-3.5));
+    }
+
+    // Tests for new Value type system
+
+    #[test]
+    fn test_value_bool_creation_and_access() {
+        let true_val = Value::new_bool(true);
+        let false_val = Value::new_bool(false);
+
+        assert!(true_val.is_bool());
+        assert!(false_val.is_bool());
+        assert!(!true_val.is_nil());
+        assert!(!true_val.is_number());
+        
+        assert_eq!(true_val.as_bool(), Some(true));
+        assert_eq!(false_val.as_bool(), Some(false));
+        assert_eq!(true_val.as_number(), None);
+        assert_eq!(true_val.as_bool().unwrap(), true);
+        assert_eq!(false_val.as_bool().unwrap(), false);
+    }
+
+    #[test]
+    fn test_value_nil_creation_and_access() {
+        let nil_val = Value::new_nil();
+
+        assert!(nil_val.is_nil());
+        assert!(!nil_val.is_bool());
+        assert!(!nil_val.is_number());
+        
+        assert_eq!(nil_val.as_bool(), None);
+        assert_eq!(nil_val.as_number(), None);
+    }
+
+    #[test]
+    fn test_value_number_type_checks() {
+        let num_val = Value::new_number(42.5);
+
+        assert!(num_val.is_number());
+        assert!(!num_val.is_bool());
+        assert!(!num_val.is_nil());
+        
+        assert_eq!(num_val.as_number(), Some(42.5));
+        assert_eq!(num_val.as_bool(), None);
+    }
+
+    #[test]
+    fn test_values_equal() {
+        // Test bool equality
+        assert!(Value::new_bool(true).values_equal(&Value::new_bool(true)));
+        assert!(Value::new_bool(false).values_equal(&Value::new_bool(false)));
+        assert!(!Value::new_bool(true).values_equal(&Value::new_bool(false)));
+
+        // Test nil equality
+        assert!(Value::new_nil().values_equal(&Value::new_nil()));
+
+        // Test number equality
+        assert!(Value::new_number(42.0).values_equal(&Value::new_number(42.0)));
+        assert!(!Value::new_number(42.0).values_equal(&Value::new_number(43.0)));
+
+        // Test cross-type inequality
+        assert!(!Value::new_bool(true).values_equal(&Value::new_nil()));
+        assert!(!Value::new_bool(false).values_equal(&Value::new_number(0.0)));
+        assert!(!Value::new_nil().values_equal(&Value::new_number(0.0)));
+        assert!(!Value::new_number(1.0).values_equal(&Value::new_bool(true)));
+    }
+
+    #[test]
+    fn test_is_falsy() {
+        // Test falsy values
+        assert!(Value::new_nil().is_falsy());
+        assert!(Value::new_bool(false).is_falsy());
+
+        // Test truthy values
+        assert!(!Value::new_bool(true).is_falsy());
+        assert!(!Value::new_number(0.0).is_falsy()); // Zero is truthy in this language
+        assert!(!Value::new_number(42.0).is_falsy());
+        assert!(!Value::new_number(-1.0).is_falsy());
+        assert!(!Value::new_number(f64::NAN).is_falsy()); // NaN is truthy
+    }
+
+    #[test]
+    fn test_value_clone_and_partialeq() {
+        let orig_bool = Value::new_bool(true);
+        let cloned_bool = orig_bool.clone();
+        assert_eq!(orig_bool, cloned_bool);
+
+        let orig_nil = Value::new_nil();
+        let cloned_nil = orig_nil.clone();
+        assert_eq!(orig_nil, cloned_nil);
+
+        let orig_num = Value::new_number(3.14);
+        let cloned_num = orig_num.clone();
+        assert_eq!(orig_num, cloned_num);
+
+        // Test inequality
+        assert_ne!(Value::new_bool(true), Value::new_bool(false));
+        assert_ne!(Value::new_bool(true), Value::new_nil());
+        assert_ne!(Value::new_number(1.0), Value::new_number(2.0));
+    }
+
+    #[test]
+    fn test_value_array_with_mixed_types() {
+        let mut array = ValueArray::init_value_array();
+        
+        array.write_value_array(Value::new_bool(true));
+        array.write_value_array(Value::new_nil());
+        array.write_value_array(Value::new_number(42.5));
+        array.write_value_array(Value::new_bool(false));
+
+        assert_eq!(array.values.len(), 4);
+        assert_eq!(array.values[0], Value::new_bool(true));
+        assert_eq!(array.values[1], Value::new_nil());
+        assert_eq!(array.values[2], Value::new_number(42.5));
+        assert_eq!(array.values[3], Value::new_bool(false));
+
+        // Test type checks
+        assert!(array.values[0].is_bool());
+        assert!(array.values[1].is_nil());
+        assert!(array.values[2].is_number());
+        assert!(array.values[3].is_bool());
+    }
+
+    #[test]
+    fn test_value_debug_formatting() {
+        // Test that Debug trait works for all Value variants
+        let bool_val = Value::new_bool(true);
+        let nil_val = Value::new_nil();
+        let num_val = Value::new_number(3.14);
+
+        let debug_bool = format!("{:?}", bool_val);
+        let debug_nil = format!("{:?}", nil_val);
+        let debug_num = format!("{:?}", num_val);
+
+        assert!(debug_bool.contains("Bool"));
+        assert!(debug_bool.contains("true"));
+        assert_eq!(debug_nil, "Nil");
+        assert!(debug_num.contains("Number"));
+        assert!(debug_num.contains("3.14"));
     }
 }
