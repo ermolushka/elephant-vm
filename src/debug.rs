@@ -7,6 +7,13 @@ pub const OP_ADD: u8 = OpCode::OpAdd as u8;
 pub const OP_SUBTRACT: u8 = OpCode::OpSubtract as u8;
 pub const OP_MULTIPLY: u8 = OpCode::OpMultiply as u8;
 pub const OP_DIVIDE: u8 = OpCode::OpDivide as u8;
+pub const OP_NIL: u8 = OpCode::OpNil as u8;
+pub const OP_TRUE: u8 = OpCode::OpTrue as u8;
+pub const OP_FALSE: u8 = OpCode::OpFalse as u8;
+pub const OP_EQUAL: u8 = OpCode::OpEqual as u8;
+pub const OP_GREATER: u8 = OpCode::OpGreater as u8;
+pub const OP_LESS: u8 = OpCode::OpLess as u8;
+pub const OP_NOT: u8 = OpCode::OpNot as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -35,6 +42,13 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_SUBTRACT => simple_instruction("OP_SUBTRACT", offset),
         OP_MULTIPLY => simple_instruction("OP_MULTIPLY", offset),
         OP_DIVIDE => simple_instruction("OP_DIVIDE", offset),
+        OP_NIL => simple_instruction("OP_NIL", offset),
+        OP_TRUE => simple_instruction("OP_TRUE", offset),
+        OP_FALSE => simple_instruction("OP_FALSE", offset),
+        OP_EQUAL => simple_instruction("OP_EQUAL", offset),
+        OP_GREATER => simple_instruction("OP_GREATER", offset),
+        OP_LESS => simple_instruction("OP_LESS", offset),
+        OP_NOT => simple_instruction("OP_NOT", offset),
         _ => {
             println!("Unknown opcode: {}", instruction);
             offset + 1
@@ -50,7 +64,7 @@ pub fn simple_instruction(name: &str, offset: usize) -> usize {
 pub fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let constant = chunk.code[offset + 1];
     println!(
-        "{:16} {:4} '{}'",
+        "{:16} {:4} '{:?}'",
         name, constant, chunk.constants.values[constant as usize]
     );
     offset + 2 // 2 because we have opcode and operand
@@ -59,7 +73,7 @@ pub fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chunk::Chunk;
+    use crate::{chunk::Chunk, value::Value};
 
     #[test]
     fn test_constants() {
@@ -85,7 +99,7 @@ mod tests {
     #[test]
     fn test_disassemble_instruction_constant() {
         let mut chunk = Chunk::init_chunk();
-        let constant_index = chunk.add_constant(3.14);
+        let constant_index = chunk.add_constant(Value::new_number(3.14));
         chunk.write_chunk(OpCode::OpConstant as u8, 10);
         chunk.write_chunk(constant_index as u8, 10);
 
@@ -105,7 +119,7 @@ mod tests {
     #[test]
     fn test_constant_instruction() {
         let mut chunk = Chunk::init_chunk();
-        let constant_index = chunk.add_constant(42.0);
+        let constant_index = chunk.add_constant(Value::new_number(42.0));
         chunk.write_chunk(OpCode::OpConstant as u8, 10);
         chunk.write_chunk(constant_index as u8, 10);
 
@@ -126,7 +140,7 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Add a constant and its bytecode
-        let const_index = chunk.add_constant(99.5);
+        let const_index = chunk.add_constant(Value::new_number(99.5));
         chunk.write_chunk(OpCode::OpConstant as u8, 1);
         chunk.write_chunk(const_index as u8, 1);
 
@@ -141,7 +155,7 @@ mod tests {
     #[test]
     fn test_disassemble_instruction_same_line() {
         let mut chunk = Chunk::init_chunk();
-        let constant_index = chunk.add_constant(42.0); // Need to add a constant first
+        let constant_index = chunk.add_constant(Value::new_number(42.0)); // Need to add a constant first
         chunk.write_chunk(OpCode::OpConstant as u8, 42);
         chunk.write_chunk(constant_index as u8, 42); // same line number
 
@@ -175,8 +189,8 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Create a more complex chunk
-        let const1 = chunk.add_constant(1.23);
-        let const2 = chunk.add_constant(4.56);
+        let const1 = chunk.add_constant(Value::new_number(1.23));
+        let const2 = chunk.add_constant(Value::new_number(4.56));
 
         chunk.write_chunk(OpCode::OpConstant as u8, 100);
         chunk.write_chunk(const1 as u8, 100);
@@ -235,7 +249,7 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Test with zero constant index
-        chunk.add_constant(0.0);
+        chunk.add_constant(Value::new_number(0.0));
         chunk.write_chunk(OpCode::OpConstant as u8, 1);
         chunk.write_chunk(0, 1);
         let offset = constant_instruction("ZERO_CONST", &chunk, 0);
@@ -243,7 +257,7 @@ mod tests {
 
         // Test with maximum constant index
         for _ in 0..255 {
-            chunk.add_constant(0.0);
+            chunk.add_constant(Value::new_number(0.0));
         }
         chunk.write_chunk(OpCode::OpConstant as u8, 2);
         chunk.write_chunk(255, 2);
@@ -299,8 +313,8 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Create a complex sequence: constant, negate, constant, add, return
-        let const1_index = chunk.add_constant(10.0);
-        let const2_index = chunk.add_constant(5.0);
+        let const1_index = chunk.add_constant(Value::new_number(10.0));
+        let const2_index = chunk.add_constant(Value::new_number(5.0));
 
         chunk.write_chunk(OpCode::OpConstant as u8, 1);
         chunk.write_chunk(const1_index as u8, 1);
@@ -333,10 +347,10 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Test with various constant values
-        let _zero_index = chunk.add_constant(0.0);
-        let _neg_index = chunk.add_constant(-42.0);
-        let _large_index = chunk.add_constant(f64::MAX);
-        let _small_index = chunk.add_constant(f64::MIN_POSITIVE);
+        let _zero_index = chunk.add_constant(Value::new_number(0.0));
+        let _neg_index = chunk.add_constant(Value::new_number(-42.0));
+        let _large_index = chunk.add_constant(Value::new_number(f64::MAX));
+        let _small_index = chunk.add_constant(Value::new_number(f64::MIN_POSITIVE));
 
         // Test disassembly of each by creating proper bytecode
         chunk.write_chunk(OpCode::OpConstant as u8, 1);

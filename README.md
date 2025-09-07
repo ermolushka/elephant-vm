@@ -116,13 +116,16 @@ pub struct VM {
 - `OP_CONSTANT`: Push constant value onto stack
 - `OP_ADD`, `OP_SUBTRACT`, `OP_MULTIPLY`, `OP_DIVIDE`: Arithmetic operations
 - `OP_NEGATE`: Unary negation
+- `OP_NIL`, `OP_TRUE`, `OP_FALSE`: Literal values
+- `OP_EQUAL`, `OP_GREATER`, `OP_LESS`: Comparison operations
+- `OP_NOT`: Logical negation
 - `OP_RETURN`: End execution, return result
 
 **Example Execution**:
 ```rust
-// Source: "1 + 2"
-// Bytecode: [OP_CONSTANT, 0, OP_CONSTANT, 1, OP_ADD, OP_RETURN]
-// Stack: [1] → [1, 2] → [3] → return 3
+// Source: "!false"
+// Bytecode: [OP_FALSE, OP_NOT, OP_RETURN]
+// Stack: [false] → [true] → return true
 ```
 
 ### 5. Chunk (`src/chunk.rs`)
@@ -146,9 +149,9 @@ pub struct Chunk {
 
 **Example**:
 ```rust
-// For "1.5 + 2.3":
-// Constants: [1.5, 2.3]
-// Bytecode: [OP_CONSTANT, 0, OP_CONSTANT, 1, OP_ADD, OP_RETURN]
+// For "true != nil":
+// Constants: []
+// Bytecode: [OP_TRUE, OP_NIL, OP_EQUAL, OP_NOT, OP_RETURN]
 ```
 
 ### 6. Value System (`src/value.rs`)
@@ -157,8 +160,19 @@ pub struct Chunk {
 
 **Current Implementation**:
 ```rust
-pub type Value = f64;  // All values are floating-point numbers
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Bool(bool),     // Boolean values: true, false
+    Nil,           // Null/undefined value
+    Number(f64),   // Floating-point numbers
+}
 ```
+
+**Key Features**:
+- Type checking methods: `is_bool()`, `is_nil()`, `is_number()`
+- Safe access methods: `as_bool()`, `as_number()`
+- Value comparison: `values_equal()` for cross-type comparisons
+- Truthiness evaluation: `is_falsy()` (nil and false are falsy)
 
 **ValueArray**: Manages constant storage
 ```rust
@@ -169,44 +183,57 @@ pub struct ValueArray {
 
 ## Data Flow Example
 
-For the expression `1 + 2 * 3`:
+For the expression `5 > 3 == true`:
 
-1. **Scanner**: `"1 + 2 * 3"` → `[Number(1), Plus, Number(2), Star, Number(3)]`
-2. **Compiler**: Tokens → Bytecode generation (to be implemented)
-3. **VM**: Bytecode → Stack operations → Result `7`
+1. **Scanner**: `"5 > 3 == true"` → `[Number(5), Greater, Number(3), EqualEqual, True]`
+2. **Compiler**: Tokens → Bytecode: `[OP_CONSTANT 0, OP_CONSTANT 1, OP_GREATER, OP_TRUE, OP_EQUAL, OP_RETURN]`
+3. **VM**: Bytecode → Stack operations → Result `Value::Bool(true)`
+
+**Stack Execution**:
+- Push 5.0, Push 3.0 → Stack: [5.0, 3.0]
+- OP_GREATER → Stack: [true]
+- OP_TRUE → Stack: [true, true]  
+- OP_EQUAL → Stack: [true]
 
 ## Current Status
 
-✅ **Completed**:
+**Completed**:
 - **Scanner (`src/scanner.rs`)**: Full tokenization with comprehensive test coverage
   - Single/multi-character tokens, keywords, identifiers, numbers, strings
   - Comment handling, line tracking, error reporting
   - UTF-8 support and whitespace handling
 - **VM (`src/vm.rs`)**: Bytecode execution engine
   - Stack-based arithmetic operations
+  - Boolean and nil value operations
+  - Comparison operations (equal, greater, less)
+  - Logical operations (not)
   - Constant loading and manipulation
   - Error handling and debugging support
 - **Chunk (`src/chunk.rs`)**: Bytecode storage and management
   - Dynamic bytecode arrays with constant pools
   - Line number tracking for debugging
-- **Value System (`src/value.rs`)**: Runtime value representation
+- **Value System (`src/value.rs`)**: Runtime value representation with type system
+  - Boolean, nil, and number value types
+  - Type checking and safe value access
+  - Cross-type equality and truthiness evaluation
 - **Debug System (`src/debug.rs`)**: Disassembly and debugging tools
-- **Compiler (`src/compiler.rs`)**: **Pratt parser implementation with expression parsing**
-  - ✅ **Number literals** - Parse and emit constants for numeric values
-  - ✅ **Binary operations** - Addition, subtraction, multiplication, division with correct precedence
-  - ✅ **Unary operations** - Negation support
-  - ✅ **Grouping** - Parentheses for expression precedence override
-  - ✅ **Parse rules** - Token-to-function mapping with precedence handling
-  - ✅ **Error handling** - Panic mode error recovery
-  - ✅ **Precedence parsing** - Operator precedence climbing algorithm
+- **Compiler (`src/compiler.rs`)**: Pratt parser implementation with expression parsing
+  - **Number literals** - Parse and emit constants for numeric values
+  - **Boolean and nil literals** - Parse true, false, nil values
+  - **Binary operations** - Addition, subtraction, multiplication, division with correct precedence
+  - **Comparison operations** - Equal, not equal, greater, less, greater equal, less equal
+  - **Unary operations** - Negation and logical not support
+  - **Grouping** - Parentheses for expression precedence override
+  - **Parse rules** - Token-to-function mapping with precedence handling
+  - **Error handling** - Panic mode error recovery
+  - **Precedence parsing** - Operator precedence climbing algorithm
 
-🚧 **In Progress**:
-- Complete compiler integration testing (some edge case handling)
+**In Progress**:
 - Additional language features (variables, control flow, functions)
 
 ## Testing
 
-**Comprehensive Test Coverage - 134+ Tests**:
+**Comprehensive Test Coverage - 175 Tests**:
 
 ```bash
 # Run all tests
@@ -222,12 +249,12 @@ cargo test vm::tests
 ```
 
 **Test Coverage**:
-- **Scanner (25+ tests)**: Tokenization, keywords, strings, numbers, comments, whitespace, UTF-8, error handling
-- **Compiler (25+ tests)**: Expression parsing, binary/unary operations, precedence, error handling, bytecode generation  
-- **VM (20+ tests)**: Arithmetic operations, stack management, constant handling, error cases
+- **Scanner (40+ tests)**: Tokenization, keywords, strings, numbers, comments, whitespace, UTF-8, error handling
+- **Compiler (40+ tests)**: Expression parsing, binary/unary operations, boolean literals, comparison operations, precedence, error handling, bytecode generation  
+- **VM (45+ tests)**: Arithmetic operations, boolean operations, comparison operations, logical operations, stack management, constant handling, error cases
 - **Chunk (15+ tests)**: Bytecode storage, constant pools, line tracking
-- **Value (10+ tests)**: Value operations and conversions
-- **Debug (25+ tests)**: Disassembly, instruction formatting
+- **Value (20+ tests)**: Value type system, boolean/nil/number operations, type checking, equality testing, truthiness evaluation
+- **Debug (15+ tests)**: Disassembly, instruction formatting
 
 ## Architecture Details
 
@@ -244,9 +271,13 @@ PrecFactor → PrecUnary → PrecCall → PrecPrimary
 
 **Parse Rules Table**:
 - `TokenType::Number` → `prefix: number()` (parse numeric literals)
+- `TokenType::True/False/Nil` → `prefix: literal()` (parse boolean/nil literals)
 - `TokenType::Minus` → `prefix: unary()`, `infix: binary()` (negation and subtraction)
+- `TokenType::Bang` → `prefix: unary()` (logical not)
 - `TokenType::Plus` → `infix: binary()` (addition)
 - `TokenType::Star/Slash` → `infix: binary()` (multiplication/division)  
+- `TokenType::EqualEqual/BangEqual` → `infix: binary()` (equality/inequality)
+- `TokenType::Greater/Less` → `infix: binary()` (comparison)
 - `TokenType::LeftParen` → `prefix: grouping()` (parentheses)
 
 **Compilation Flow**:
@@ -257,14 +288,13 @@ PrecFactor → PrecUnary → PrecCall → PrecPrimary
 
 ### Bytecode Generation
 
-**Example**: `1 + 2 * 3` generates:
+**Example**: `!(5 > 3)` generates:
 ```
-OP_CONSTANT 0  // Push 1
-OP_CONSTANT 1  // Push 2  
-OP_CONSTANT 2  // Push 3
-OP_MULTIPLY    // 2 * 3
-OP_ADD         // 1 + (result)
-OP_RETURN      // Return top of stack
+OP_CONSTANT 0  // Push 5
+OP_CONSTANT 1  // Push 3  
+OP_GREATER     // 5 > 3 → true
+OP_NOT         // !true → false
+OP_RETURN      // Return false
 ```
 
 ## Usage
@@ -308,16 +338,18 @@ src/
 
 ## Language Features Supported
 
-✅ **Expressions**:
+**Expressions**:
 - Numeric literals: `42`, `3.14159`
+- Boolean literals: `true`, `false`
+- Nil literal: `nil`
 - Binary operators: `+`, `-`, `*`, `/` with correct precedence
-- Unary operators: `-` (negation)
+- Comparison operators: `==`, `!=`, `>`, `>=`, `<`, `<=`
+- Unary operators: `-` (negation), `!` (logical not)
 - Grouping: `(expression)`
-- Complex expressions: `(1 + 2) * 3 - 4 / 2`
+- Complex expressions: `!(5 > 3) == false`, `2 + 3 > 4`
 
-🚧 **Planned**:
+**Planned**:
 - Variables and assignment
-- Boolean literals and logic operators  
 - Control flow (if/else, loops)
 - Function definitions and calls
 - String operations
