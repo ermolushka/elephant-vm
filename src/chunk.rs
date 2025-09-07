@@ -100,34 +100,34 @@ mod tests {
     #[test]
     fn test_chunk_add_constant_single() {
         let mut chunk = Chunk::init_chunk();
-        let index = chunk.add_constant(3.14);
+        let index = chunk.add_constant(Value::new_number(3.14));
 
         assert_eq!(index, 0);
         assert_eq!(chunk.constants.values.len(), 1);
-        assert_eq!(chunk.constants.values[0], 3.14);
+        assert_eq!(chunk.constants.values[0], Value::new_number(3.14));
     }
 
     #[test]
     fn test_chunk_add_constant_multiple() {
         let mut chunk = Chunk::init_chunk();
-        let index1 = chunk.add_constant(1.1);
-        let index2 = chunk.add_constant(2.2);
-        let index3 = chunk.add_constant(3.3);
+        let index1 = chunk.add_constant(Value::new_number(1.1));
+        let index2 = chunk.add_constant(Value::new_number(2.2));
+        let index3 = chunk.add_constant(Value::new_number(3.3));
 
         assert_eq!(index1, 0);
         assert_eq!(index2, 1);
         assert_eq!(index3, 2);
         assert_eq!(chunk.constants.values.len(), 3);
-        assert_eq!(chunk.constants.values[0], 1.1);
-        assert_eq!(chunk.constants.values[1], 2.2);
-        assert_eq!(chunk.constants.values[2], 3.3);
+        assert_eq!(chunk.constants.values[0], Value::new_number(1.1));
+        assert_eq!(chunk.constants.values[1], Value::new_number(2.2));
+        assert_eq!(chunk.constants.values[2], Value::new_number(3.3));
     }
 
     #[test]
     fn test_chunk_free() {
         let mut chunk = Chunk::init_chunk();
         chunk.write_chunk(OpCode::OpReturn as u8, 42);
-        chunk.add_constant(3.14);
+        chunk.add_constant(Value::new_number(3.14));
 
         // Verify data was added
         assert_eq!(chunk.code.len(), 1);
@@ -146,12 +146,12 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Add a constant and create bytecode for it
-        let constant_index = chunk.add_constant(42.0);
+        let constant_index = chunk.add_constant(Value::new_number(42.0));
         chunk.write_chunk(OpCode::OpConstant as u8, 100);
         chunk.write_chunk(constant_index as u8, 100);
 
         // Add another constant
-        let constant_index2 = chunk.add_constant(99.9);
+        let constant_index2 = chunk.add_constant(Value::new_number(99.9));
         chunk.write_chunk(OpCode::OpConstant as u8, 200);
         chunk.write_chunk(constant_index2 as u8, 200);
 
@@ -160,8 +160,8 @@ mod tests {
 
         // Verify the complete state
         assert_eq!(chunk.constants.values.len(), 2);
-        assert_eq!(chunk.constants.values[0], 42.0);
-        assert_eq!(chunk.constants.values[1], 99.9);
+        assert_eq!(chunk.constants.values[0], Value::new_number(42.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(99.9));
 
         assert_eq!(chunk.code.len(), 5);
         assert_eq!(chunk.code[0], OpCode::OpConstant as u8);
@@ -198,24 +198,24 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Test with zero
-        let zero_index = chunk.add_constant(0.0);
+        let zero_index = chunk.add_constant(Value::new_number(0.0));
         assert_eq!(zero_index, 0);
-        assert_eq!(chunk.constants.values[0], 0.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(0.0));
 
         // Test with negative numbers
-        let neg_index = chunk.add_constant(-42.0);
+        let neg_index = chunk.add_constant(Value::new_number(-42.0));
         assert_eq!(neg_index, 1);
-        assert_eq!(chunk.constants.values[1], -42.0);
+        assert_eq!(chunk.constants.values[1], Value::new_number(-42.0));
 
         // Test with very large numbers
-        let large_index = chunk.add_constant(f64::MAX);
+        let large_index = chunk.add_constant(Value::new_number(f64::MAX));
         assert_eq!(large_index, 2);
-        assert_eq!(chunk.constants.values[2], f64::MAX);
+        assert_eq!(chunk.constants.values[2], Value::new_number(f64::MAX));
 
         // Test with very small numbers
-        let small_index = chunk.add_constant(f64::MIN_POSITIVE);
+        let small_index = chunk.add_constant(Value::new_number(f64::MIN_POSITIVE));
         assert_eq!(small_index, 3);
-        assert_eq!(chunk.constants.values[3], f64::MIN_POSITIVE);
+        assert_eq!(chunk.constants.values[3], Value::new_number(f64::MIN_POSITIVE));
     }
 
     #[test]
@@ -246,8 +246,8 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Mix different types of operations
-        let const1_index = chunk.add_constant(10.0);
-        let const2_index = chunk.add_constant(20.0);
+        let const1_index = chunk.add_constant(Value::new_number(10.0));
+        let const2_index = chunk.add_constant(Value::new_number(20.0));
 
         // Add some constants
         chunk.write_chunk(OpCode::OpConstant as u8, 1);
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn test_chunk_clone() {
         let mut chunk = Chunk::init_chunk();
-        chunk.add_constant(42.0);
+        chunk.add_constant(Value::new_number(42.0));
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
         let cloned_chunk = chunk.clone();

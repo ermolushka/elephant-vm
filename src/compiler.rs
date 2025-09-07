@@ -502,7 +502,7 @@ impl<'a> Compiler<'a> {
         let lexeme = &self.scanner.source
             [self.parser.previous.start..self.parser.previous.start + self.parser.previous.length];
         let value: f64 = lexeme.parse().unwrap_or(0.0);
-        self.emit_constant(value);
+        self.emit_constant(Value::new_number(value));
     }
     pub fn parse_precedence(&mut self, precedence: Precedence) {
         // starts at the current token and parses any expression
@@ -707,7 +707,7 @@ mod tests {
         
         // Should have added one constant
         assert_eq!(compiler.parser.chunk.constants.values.len(), initial_constants + 1);
-        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], 42.5);
+        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], Value::new_number(42.5));
         
         // Should have emitted OP_CONSTANT instruction
         assert_eq!(compiler.parser.chunk.code[compiler.parser.chunk.code.len() - 2], OpCode::OpConstant as u8);
@@ -726,7 +726,7 @@ mod tests {
         
         // Should have added one constant
         assert_eq!(compiler.parser.chunk.constants.values.len(), initial_constants + 1);
-        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], 123.0);
+        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], Value::new_number(123.0));
     }
 
     #[test]
@@ -748,7 +748,7 @@ mod tests {
         
         // Should handle invalid number as 0.0
         assert_eq!(compiler.parser.chunk.constants.values.len(), initial_constants + 1);
-        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], 0.0);
+        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], Value::new_number(0.0));
     }
 
     #[test]
@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(chunk.code[1], 0); // constant index
         assert_eq!(chunk.code[2], OpCode::OpNegate as u8);
         assert_eq!(chunk.code[3], OpCode::OpReturn as u8);
-        assert_eq!(chunk.constants.values[0], 5.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(5.0));
     }
 
     #[test]
@@ -786,8 +786,8 @@ mod tests {
         assert_eq!(chunk.code[3], 1); // constant index for 2
         assert_eq!(chunk.code[4], OpCode::OpAdd as u8);
         assert_eq!(chunk.code[5], OpCode::OpReturn as u8);
-        assert_eq!(chunk.constants.values[0], 1.0);
-        assert_eq!(chunk.constants.values[1], 2.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(1.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(2.0));
     }
 
     #[test]
@@ -802,8 +802,8 @@ mod tests {
         // Should have: OP_CONSTANT 5, OP_CONSTANT 3, OP_SUBTRACT, OP_RETURN
         assert_eq!(chunk.code.len(), 6);
         assert_eq!(chunk.code[4], OpCode::OpSubtract as u8);
-        assert_eq!(chunk.constants.values[0], 5.0);
-        assert_eq!(chunk.constants.values[1], 3.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(5.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(3.0));
     }
 
     #[test]
@@ -818,8 +818,8 @@ mod tests {
         // Should have: OP_CONSTANT 3, OP_CONSTANT 4, OP_MULTIPLY, OP_RETURN
         assert_eq!(chunk.code.len(), 6);
         assert_eq!(chunk.code[4], OpCode::OpMultiply as u8);
-        assert_eq!(chunk.constants.values[0], 3.0);
-        assert_eq!(chunk.constants.values[1], 4.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(3.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(4.0));
     }
 
     #[test]
@@ -834,8 +834,8 @@ mod tests {
         // Should have: OP_CONSTANT 8, OP_CONSTANT 2, OP_DIVIDE, OP_RETURN
         assert_eq!(chunk.code.len(), 6);
         assert_eq!(chunk.code[4], OpCode::OpDivide as u8);
-        assert_eq!(chunk.constants.values[0], 8.0);
-        assert_eq!(chunk.constants.values[1], 2.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(8.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(2.0));
     }
 
     #[test]
@@ -852,7 +852,7 @@ mod tests {
         assert_eq!(chunk.code[0], OpCode::OpConstant as u8);
         assert_eq!(chunk.code[1], 0); // constant index
         assert_eq!(chunk.code[2], OpCode::OpReturn as u8);
-        assert_eq!(chunk.constants.values[0], 42.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(42.0));
     }
 
     #[test]
@@ -887,9 +887,9 @@ mod tests {
         assert!(result);
         
         // Should have grouping change precedence
-        assert_eq!(chunk.constants.values[0], 1.0);
-        assert_eq!(chunk.constants.values[1], 2.0);
-        assert_eq!(chunk.constants.values[2], 3.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(1.0));
+        assert_eq!(chunk.constants.values[1], Value::new_number(2.0));
+        assert_eq!(chunk.constants.values[2], Value::new_number(3.0));
         
         // Find the ADD and MULTIPLY operations
         assert!(chunk.code.contains(&(OpCode::OpAdd as u8)));
@@ -1004,13 +1004,13 @@ mod tests {
         let mut compiler = Compiler::new();
         compiler.parser.chunk = Chunk::init_chunk();
         
-        let index1 = compiler.make_constant(42.0);
-        let index2 = compiler.make_constant(3.14);
+        let index1 = compiler.make_constant(Value::new_number(42.0));
+        let index2 = compiler.make_constant(Value::new_number(3.14));
         
         assert_eq!(index1, 0);
         assert_eq!(index2, 1);
-        assert_eq!(compiler.parser.chunk.constants.values[0], 42.0);
-        assert_eq!(compiler.parser.chunk.constants.values[1], 3.14);
+        assert_eq!(compiler.parser.chunk.constants.values[0], Value::new_number(42.0));
+        assert_eq!(compiler.parser.chunk.constants.values[1], Value::new_number(3.14));
     }
 
     #[test]
@@ -1063,12 +1063,12 @@ mod tests {
         };
         
         let initial_len = compiler.parser.chunk.code.len();
-        compiler.emit_constant(42.5);
+        compiler.emit_constant(Value::new_number(42.5));
         
         assert_eq!(compiler.parser.chunk.code.len(), initial_len + 2);
         assert_eq!(compiler.parser.chunk.code[initial_len], OpCode::OpConstant as u8);
         assert_eq!(compiler.parser.chunk.code[initial_len + 1], 0); // constant index
-        assert_eq!(compiler.parser.chunk.constants.values[0], 42.5);
+        assert_eq!(compiler.parser.chunk.constants.values[0], Value::new_number(42.5));
     }
 
     #[test]
@@ -1081,7 +1081,7 @@ mod tests {
         assert!(result);
         
         // Should just be a constant
-        assert_eq!(chunk.constants.values[0], 1.0);
+        assert_eq!(chunk.constants.values[0], Value::new_number(1.0));
         assert!(chunk.code.contains(&(OpCode::OpConstant as u8)));
         assert!(chunk.code.contains(&(OpCode::OpReturn as u8)));
     }
@@ -1095,6 +1095,6 @@ mod tests {
         let result = compiler.compile("3.141592653589793", &mut chunk);
         assert!(result);
         
-        assert_eq!(chunk.constants.values[0], 3.141592653589793);
+        assert_eq!(chunk.constants.values[0], Value::new_number(3.141592653589793));
     }
 }
