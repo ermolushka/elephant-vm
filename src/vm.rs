@@ -117,11 +117,15 @@ impl VM {
                     // value2 always comes forst as it's FIFO
                     let value2 = self.pop();
                     let value1 = self.pop();
-                    if !value1.is_number() || !value2.is_number() {
-                        self.run_time_error("Operands must be numbers");
+                    if value1.is_string() || value2.is_string() {
+                        self.push(value1.string_concat(&value2));
+                    }
+                    else if value1.is_number() && value2.is_number() {
+                        self.push(Value::new_number(value1.as_number().unwrap() + value2.as_number().unwrap()));
+                    } else {
+                        self.run_time_error("Operands must be two numbers or two strings");
                         return InterpretResult::InterpretRuntimeError;
                     }
-                    self.push(Value::new_number(value1.as_number().unwrap() + value2.as_number().unwrap()));
                 }
                 OP_SUBTRACT => {
                     let value2 = self.pop();
