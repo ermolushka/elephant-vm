@@ -206,7 +206,7 @@ impl<'a> ParseRules<'a> {
         rules.insert(
             TokenType::String,
             ParseRule {
-                prefix: None,
+                prefix: Some(Compiler::string),
                 infix: None,
                 precedence: Precedence::PrecNone,
             },
@@ -503,6 +503,12 @@ impl<'a> Compiler<'a> {
             [self.parser.previous.start..self.parser.previous.start + self.parser.previous.length];
         let value: f64 = lexeme.parse().unwrap_or(0.0);
         self.emit_constant(Value::new_number(value));
+    }
+    // string literal
+    pub fn string(&mut self) {
+        let lexeme = &self.scanner.source
+            [self.parser.previous.start..self.parser.previous.start + self.parser.previous.length];
+        self.emit_constant(Value::new_string(lexeme.to_string()));
     }
     pub fn parse_precedence(&mut self, precedence: Precedence) {
         // starts at the current token and parses any expression

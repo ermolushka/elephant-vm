@@ -142,9 +142,15 @@ impl<'a> Scanner<'a> {
         if self.is_at_end() {
             return self.error_token("Unterminated string.");
         }
-        // The closing quote
+        // The closing quote - advance past it but don't include it in the lexeme
         self.advance();
-        self.make_token(TokenType::String)
+        // Create token with adjusted start position to exclude the opening quote
+        Token {
+            token_type: TokenType::String,
+            start: self.start + 1, // Skip the opening quote
+            length: self.current - self.start - 2, // Exclude both quotes
+            line: self.line,
+        }
     }
 
     pub fn is_alpha(&self, c: Option<char>) -> bool {
@@ -725,10 +731,10 @@ mod tests {
     #[test]
     fn test_scanner_string_parsing() {
         let test_cases = [
-            ("\"hello\"", TokenType::String, 7),
-            ("\"\"", TokenType::String, 2),
-            ("\"hello world\"", TokenType::String, 13),
-            ("\"line1\\nline2\"", TokenType::String, 14),
+            ("\"hello\"", TokenType::String, 5),
+            ("\"\"", TokenType::String, 0),
+            ("\"hello world\"", TokenType::String, 11),
+            ("\"line1\\nline2\"", TokenType::String, 12),
         ];
 
         for (input, expected_type, expected_length) in test_cases.iter() {

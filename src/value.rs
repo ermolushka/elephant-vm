@@ -3,6 +3,7 @@ pub enum Value {
     Bool(bool),
     Nil,
     Number(f64),
+    String(String),
 }
 
 impl Value {
@@ -16,6 +17,9 @@ impl Value {
 
     pub fn is_number(&self) -> bool {
         matches!(self, Value::Number(_))
+    }
+    pub fn is_string(&self) -> bool {
+        matches!(self, Value::String(_))
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -50,6 +54,7 @@ impl Value {
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Nil, Value::Nil) => true,
             (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
             _ => false,
         }
     }
@@ -60,6 +65,24 @@ impl Value {
             Value::Bool(false) => true,
             _ => false,
         }
+    }
+
+    pub fn string_concat(&self, other: &Value) -> Self {
+        match (self, other) {
+            (Value::String(a), Value::String(b)) => Value::new_string(a.clone() + &b.clone()),
+            _ => Value::new_string(format!("{:?} {:?}", self, other)),
+        }
+    }
+
+    pub fn as_string(&self) -> Option<String> {
+        match self {
+            Value::String(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn new_string(value: String) -> Self {
+        Value::String(value)
     }
 }
 
