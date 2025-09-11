@@ -165,11 +165,12 @@ pub enum Value {
     Bool(bool),     // Boolean values: true, false
     Nil,           // Null/undefined value
     Number(f64),   // Floating-point numbers
+    String(String), // String values
 }
 ```
 
 **Key Features**:
-- Type checking methods: `is_bool()`, `is_nil()`, `is_number()`
+- Type checking methods: `is_bool()`, `is_nil()`, `is_number()`, `is_string()`
 - Safe access methods: `as_bool()`, `as_number()`
 - Value comparison: `values_equal()` for cross-type comparisons
 - Truthiness evaluation: `is_falsy()` (nil and false are falsy)
@@ -213,7 +214,7 @@ For the expression `5 > 3 == true`:
   - Dynamic bytecode arrays with constant pools
   - Line number tracking for debugging
 - **Value System (`src/value.rs`)**: Runtime value representation with type system
-  - Boolean, nil, and number value types
+  - Boolean, nil, number, and string value types
   - Type checking and safe value access
   - Cross-type equality and truthiness evaluation
 - **Debug System (`src/debug.rs`)**: Disassembly and debugging tools
