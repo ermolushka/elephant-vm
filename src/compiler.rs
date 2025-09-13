@@ -370,10 +370,13 @@ impl<'a> ParseRules<'a> {
 pub struct Compiler<'a> {
     pub scanner: Scanner<'a>,
     pub parser: Parser,
+    pub string_table: Option<&'a mut std::collections::HashMap<String, Value>>,
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new() -> Self {
+    
+
+    pub fn new(string_table: &'a mut std::collections::HashMap<String, Value>) -> Self {
         Self {
             scanner: Scanner::new(""), // temporary empty string, will be set in compile
             parser: Parser {
@@ -393,6 +396,7 @@ impl<'a> Compiler<'a> {
                 panic_mode: false,
                 chunk: Chunk::init_chunk(),
             },
+            string_table: Some(string_table),
         }
     }
 
@@ -508,7 +512,25 @@ impl<'a> Compiler<'a> {
     pub fn string(&mut self) {
         let lexeme = &self.scanner.source
             [self.parser.previous.start..self.parser.previous.start + self.parser.previous.length];
-        self.emit_constant(Value::new_string(lexeme.to_string()));
+        
+        let string_value = if let Some(string_table) = &mut self.string_table {
+            // Use string interning if string table is available
+            let interned_string = if let Some(existing_key) = string_table.get_key_value(lexeme) {
+                // String already exists, use the existing one
+                existing_key.0.clone()
+            } else {
+                // String doesn't exist, add it to the table
+                let new_string = lexeme.to_string();
+                string_table.insert(new_string.clone(), Value::new_nil());
+                new_string
+            };
+            Value::new_string(interned_string)
+        } else {
+            // Fallback to normal string creation if no string table
+            Value::new_string(lexeme.to_string())
+        };
+        
+        self.emit_constant(string_value);
     }
     pub fn parse_precedence(&mut self, precedence: Precedence) {
         // starts at the current token and parses any expression
@@ -639,9 +661,11 @@ mod tests {
     use super::*;
     use crate::chunk::Chunk;
 
+
     #[test]
     fn test_compiler_new() {
-        let compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let compiler = Compiler::new(&mut string_table);
 
         assert_eq!(compiler.scanner.source, "");
         assert_eq!(compiler.scanner.start, 0);
@@ -651,7 +675,8 @@ mod tests {
 
     #[test]
     fn test_compiler_compile_empty_source() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic and should complete successfully
@@ -660,7 +685,8 @@ mod tests {
 
     #[test]
     fn test_compiler_compile_simple_expression() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic and should complete successfully
@@ -669,7 +695,8 @@ mod tests {
 
     #[test]
     fn test_compiler_compile_with_comments() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic and should complete successfully
@@ -678,7 +705,8 @@ mod tests {
 
     #[test]
     fn test_compiler_compile_complex_expression() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic and should complete successfully
@@ -687,7 +715,8 @@ mod tests {
 
     #[test]
     fn test_compiler_compile_with_error_tokens() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic even with invalid characters
@@ -696,7 +725,8 @@ mod tests {
 
     #[test]
     fn test_compiler_compile_multiline() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let source = "1 + 2\n3 * 4\n// comment\n5 - 6";
@@ -707,7 +737,8 @@ mod tests {
 
     #[test]
     fn test_compiler_scanner_initialization() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         let source = "test source";
 
@@ -719,7 +750,8 @@ mod tests {
 
     #[test]
     fn test_compiler_number_parsing() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.scanner.init_scanner("42.5");
         compiler.advance(); // consume EOF, move to number token (now in current)
         compiler.advance(); // move number token to previous
@@ -738,7 +770,8 @@ mod tests {
 
     #[test]
     fn test_compiler_number_parsing_integer() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.scanner.init_scanner("123");
         compiler.advance(); // consume EOF, move to number token (now in current)
         compiler.advance(); // move number token to previous
@@ -753,7 +786,8 @@ mod tests {
 
     #[test]
     fn test_compiler_number_parsing_invalid() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.scanner.init_scanner("abc");
         compiler.advance(); // This won't be a number token, but let's test the method
         
@@ -775,7 +809,8 @@ mod tests {
 
     #[test]
     fn test_compiler_unary_negation() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "-5"
@@ -793,7 +828,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_addition() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "1 + 2"
@@ -814,7 +850,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_subtraction() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "5 - 3"
@@ -830,7 +867,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_multiplication() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "3 * 4"
@@ -846,7 +884,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_division() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "8 / 2"
@@ -862,7 +901,8 @@ mod tests {
 
     #[test]
     fn test_compiler_grouping() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "(42)"
@@ -879,7 +919,8 @@ mod tests {
 
     #[test]
     fn test_compiler_precedence_order() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "1 + 2 * 3" - should be 1 + (2 * 3) = 7, not (1 + 2) * 3 = 9
@@ -901,7 +942,8 @@ mod tests {
 
     #[test]
     fn test_compiler_complex_expression() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "(1 + 2) * 3"
@@ -920,7 +962,8 @@ mod tests {
 
     #[test]
     fn test_compiler_get_rule() {
-        let compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         
         // Test known rules
         let plus_rule = compiler.get_rule(TokenType::Plus);
@@ -946,7 +989,8 @@ mod tests {
 
     #[test]
     fn test_compiler_get_next_precedence() {
-        let compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         
         assert_eq!(compiler.get_next_precedence(Precedence::PrecNone), Precedence::PrecAssignment);
         assert_eq!(compiler.get_next_precedence(Precedence::PrecAssignment), Precedence::PrecOr);
@@ -957,7 +1001,8 @@ mod tests {
 
     #[test]
     fn test_compiler_error_handling() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test invalid expression
@@ -968,7 +1013,8 @@ mod tests {
 
     #[test]
     fn test_compiler_error_recovery() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         
         // Test error_at method
         let token = Token {
@@ -993,7 +1039,8 @@ mod tests {
 
     #[test]
     fn test_compiler_advance() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.scanner.init_scanner("123 + 456");
         
         // Initial state
@@ -1012,7 +1059,8 @@ mod tests {
 
     #[test]
     fn test_compiler_consume_success() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.scanner.init_scanner("+");
         compiler.advance(); // Get the plus token
         
@@ -1023,7 +1071,8 @@ mod tests {
 
     #[test]
     fn test_compiler_make_constant() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.parser.chunk = Chunk::init_chunk();
         
         let index1 = compiler.make_constant(Value::new_number(42.0));
@@ -1037,7 +1086,8 @@ mod tests {
 
     #[test]
     fn test_compiler_emit_byte() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.parser.chunk = Chunk::init_chunk();
         compiler.parser.previous = Token {
             token_type: TokenType::Plus,
@@ -1056,7 +1106,8 @@ mod tests {
 
     #[test]
     fn test_compiler_emit_bytes() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.parser.chunk = Chunk::init_chunk();
         compiler.parser.previous = Token {
             token_type: TokenType::Number,
@@ -1075,7 +1126,8 @@ mod tests {
 
     #[test]
     fn test_compiler_emit_constant() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         compiler.parser.chunk = Chunk::init_chunk();
         compiler.parser.previous = Token {
             token_type: TokenType::Number,
@@ -1095,7 +1147,8 @@ mod tests {
 
     #[test]
     fn test_compiler_nested_grouping() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test "((1))"
@@ -1110,7 +1163,8 @@ mod tests {
 
     #[test]
     fn test_compiler_floating_point_precision() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
         
         // Test precise floating point number
@@ -1124,7 +1178,8 @@ mod tests {
 
     #[test]
     fn test_compiler_literal_true() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("true", &mut chunk);
@@ -1139,7 +1194,8 @@ mod tests {
 
     #[test]
     fn test_compiler_literal_false() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("false", &mut chunk);
@@ -1154,7 +1210,8 @@ mod tests {
 
     #[test]
     fn test_compiler_literal_nil() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("nil", &mut chunk);
@@ -1169,7 +1226,8 @@ mod tests {
 
     #[test]
     fn test_compiler_unary_not_true() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("!true", &mut chunk);
@@ -1184,7 +1242,8 @@ mod tests {
 
     #[test]
     fn test_compiler_unary_not_false() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("!false", &mut chunk);
@@ -1199,7 +1258,8 @@ mod tests {
 
     #[test]
     fn test_compiler_unary_not_nil() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("!nil", &mut chunk);
@@ -1216,7 +1276,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_equal() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("5 == 5", &mut chunk);
@@ -1231,7 +1292,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_not_equal() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("5 != 3", &mut chunk);
@@ -1247,7 +1309,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_greater() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("7 > 3", &mut chunk);
@@ -1262,7 +1325,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_greater_equal() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("7 >= 3", &mut chunk);
@@ -1278,7 +1342,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_less() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("3 < 7", &mut chunk);
@@ -1293,7 +1358,8 @@ mod tests {
 
     #[test]
     fn test_compiler_binary_less_equal() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("3 <= 7", &mut chunk);
@@ -1309,7 +1375,8 @@ mod tests {
 
     #[test]
     fn test_compiler_mixed_boolean_and_number_comparison() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("true == true", &mut chunk);
@@ -1326,7 +1393,8 @@ mod tests {
 
     #[test]
     fn test_compiler_complex_comparison_expression() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("!(5 > 3)", &mut chunk);
@@ -1341,7 +1409,8 @@ mod tests {
 
     #[test]
     fn test_compiler_chained_comparisons() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("5 > 3 == true", &mut chunk);
@@ -1357,7 +1426,8 @@ mod tests {
 
     #[test]
     fn test_compiler_precedence_comparison_vs_arithmetic() {
-        let mut compiler = Compiler::new();
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("2 + 3 > 4", &mut chunk);

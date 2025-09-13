@@ -54,7 +54,13 @@ impl Value {
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Nil, Value::Nil) => true,
             (Value::Number(a), Value::Number(b)) => a == b,
-            (Value::String(a), Value::String(b)) => a == b,
+            (Value::String(a), Value::String(b)) => {
+                // For interned strings, we can use pointer equality
+                // Since we're using String (owned), we compare the actual string content
+                // In a more advanced implementation with string interning, we could use
+                // pointer equality here, but for now we'll use content comparison
+                a == b
+            },
             _ => false,
         }
     }

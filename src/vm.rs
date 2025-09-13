@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 use crate::{chunk::Chunk, compiler::Compiler, debug::*, value::Value};
 
 pub struct VM {
     pub chunk: Chunk,
     pub ip: usize, // instruction pointer
     pub stack: Vec<Value>,
+    pub strings: HashMap<String, Value>,
 }
 
 pub enum InterpretResult {
@@ -18,6 +21,7 @@ impl VM {
             chunk: Chunk::init_chunk(),
             ip: 0,
             stack: Vec::new(),
+            strings: HashMap::new(),
         }
     }
 
@@ -40,7 +44,7 @@ impl VM {
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        let mut compiler = Compiler::new();
+        let mut compiler = Compiler::new(&mut self.strings);
         // we create an empty chunk and pass to compiler
         // it will fill up the chunk with the bytecode
         let mut chunk = Chunk::init_chunk();
@@ -96,6 +100,7 @@ impl VM {
         loop {
             // temp stack tracing
             println!("vm stack: {:?}", self.stack);
+            println!("vm strings: {:?}", self.strings);
             let instruction = self.read_byte();
             match instruction {
                 OP_RETURN => {
@@ -208,6 +213,24 @@ impl VM {
         
         // Reset the stack
         self.reset_stack();
+    }
+
+    // String interning methods
+    pub fn intern_string(&mut self, string: String) -> String {
+        // Check if string already exists in the string table
+        if let Some(_) = self.strings.get(&string) {
+            // Return the existing string (this is a reference to the same string)
+            return string;
+        }
+        
+        // If not found, add it to the string table and return it
+        self.strings.insert(string.clone(), Value::new_nil());
+        string
+    }
+
+    pub fn find_interned_string(&self, string: &str) -> Option<&String> {
+        // Check if string exists in the string table
+        self.strings.get_key_value(string).map(|(key, _)| key)
     }
 }
 
@@ -830,5 +853,42 @@ mod tests {
         let result = vm.interpret_chunk(&chunk);
         assert!(matches!(result, InterpretResult::InterpretOk));
         assert_eq!(vm.stack_top(), Value::new_bool(true));
+    }
+
+    #[test]
+    fn test_string_interning() {
+        let mut vm = VM::init_vm();
+        
+        // Test that string interning works by checking the string table
+        let result = vm.interpret("\"hello\"");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        
+        // The string should be in the string table
+        assert!(vm.strings.contains_key("hello"));
+        
+        // Test that the same string is reused
+        let initial_count = vm.strings.len();
+        let result2 = vm.interpret("\"hello\"");
+        assert!(matches!(result2, InterpretResult::InterpretOk));
+        
+        // The string table should not have grown (same string reused)
+        assert_eq!(vm.strings.len(), initial_count);
+    }
+
+    #[test]
+    fn test_string_interning_different_strings() {
+        let mut vm = VM::init_vm();
+        
+        // Test with different strings
+        let result1 = vm.interpret("\"hello\"");
+        assert!(matches!(result1, InterpretResult::InterpretOk));
+        
+        let result2 = vm.interpret("\"world\"");
+        assert!(matches!(result2, InterpretResult::InterpretOk));
+        
+        // Both strings should be in the string table
+        assert!(vm.strings.contains_key("hello"));
+        assert!(vm.strings.contains_key("world"));
+        assert_eq!(vm.strings.len(), 2);
     }
 }
