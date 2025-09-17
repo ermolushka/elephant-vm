@@ -60,7 +60,7 @@ impl Value {
                 // In a more advanced implementation with string interning, we could use
                 // pointer equality here, but for now we'll use content comparison
                 a == b
-            },
+            }
             _ => false,
         }
     }
@@ -238,7 +238,8 @@ mod tests {
 
         let sum = array.values[0].as_number().unwrap() + array.values[1].as_number().unwrap();
         let product = array.values[0].as_number().unwrap() * array.values[1].as_number().unwrap();
-        let difference = array.values[0].as_number().unwrap() - array.values[1].as_number().unwrap();
+        let difference =
+            array.values[0].as_number().unwrap() - array.values[1].as_number().unwrap();
         let quotient = array.values[0].as_number().unwrap() / array.values[1].as_number().unwrap();
 
         assert_eq!(sum, Value::new_number(15.0).as_number().unwrap());
@@ -282,14 +283,32 @@ mod tests {
         let b: Value = Value::new_number(3.5);
 
         // Test basic arithmetic
-        assert_eq!(Value::new_number(a.as_number().unwrap() + b.as_number().unwrap()), Value::new_number(14.0));
-        assert_eq!(Value::new_number(a.as_number().unwrap() - b.as_number().unwrap()), Value::new_number(7.0));
-        assert_eq!(Value::new_number(a.as_number().unwrap() * b.as_number().unwrap()), Value::new_number(36.75));
-        assert_eq!(Value::new_number(a.as_number().unwrap() / b.as_number().unwrap()), Value::new_number(3.0));
+        assert_eq!(
+            Value::new_number(a.as_number().unwrap() + b.as_number().unwrap()),
+            Value::new_number(14.0)
+        );
+        assert_eq!(
+            Value::new_number(a.as_number().unwrap() - b.as_number().unwrap()),
+            Value::new_number(7.0)
+        );
+        assert_eq!(
+            Value::new_number(a.as_number().unwrap() * b.as_number().unwrap()),
+            Value::new_number(36.75)
+        );
+        assert_eq!(
+            Value::new_number(a.as_number().unwrap() / b.as_number().unwrap()),
+            Value::new_number(3.0)
+        );
 
         // Test negation
-        assert_eq!(Value::new_number(-a.as_number().unwrap()), Value::new_number(-10.5));
-        assert_eq!(Value::new_number(-b.as_number().unwrap()), Value::new_number(-3.5));
+        assert_eq!(
+            Value::new_number(-a.as_number().unwrap()),
+            Value::new_number(-10.5)
+        );
+        assert_eq!(
+            Value::new_number(-b.as_number().unwrap()),
+            Value::new_number(-3.5)
+        );
     }
 
     // Tests for new Value type system
@@ -303,7 +322,7 @@ mod tests {
         assert!(false_val.is_bool());
         assert!(!true_val.is_nil());
         assert!(!true_val.is_number());
-        
+
         assert_eq!(true_val.as_bool(), Some(true));
         assert_eq!(false_val.as_bool(), Some(false));
         assert_eq!(true_val.as_number(), None);
@@ -318,7 +337,7 @@ mod tests {
         assert!(nil_val.is_nil());
         assert!(!nil_val.is_bool());
         assert!(!nil_val.is_number());
-        
+
         assert_eq!(nil_val.as_bool(), None);
         assert_eq!(nil_val.as_number(), None);
     }
@@ -330,7 +349,7 @@ mod tests {
         assert!(num_val.is_number());
         assert!(!num_val.is_bool());
         assert!(!num_val.is_nil());
-        
+
         assert_eq!(num_val.as_number(), Some(42.5));
         assert_eq!(num_val.as_bool(), None);
     }
@@ -393,7 +412,7 @@ mod tests {
     #[test]
     fn test_value_array_with_mixed_types() {
         let mut array = ValueArray::init_value_array();
-        
+
         array.write_value_array(Value::new_bool(true));
         array.write_value_array(Value::new_nil());
         array.write_value_array(Value::new_number(42.5));

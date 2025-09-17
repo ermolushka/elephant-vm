@@ -14,6 +14,11 @@ pub const OP_EQUAL: u8 = OpCode::OpEqual as u8;
 pub const OP_GREATER: u8 = OpCode::OpGreater as u8;
 pub const OP_LESS: u8 = OpCode::OpLess as u8;
 pub const OP_NOT: u8 = OpCode::OpNot as u8;
+pub const OP_PRINT: u8 = OpCode::OpPrint as u8;
+pub const OP_POP: u8 = OpCode::OpPop as u8;
+pub const OP_DEFINE_GLOBAL: u8 = OpCode::OpDefineGlobal as u8;
+pub const OP_GET_GLOBAL: u8 = OpCode::OpGetGlobal as u8;
+pub const OP_SET_GLOBAL: u8 = OpCode::OpSetGlobal as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -49,6 +54,11 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_GREATER => simple_instruction("OP_GREATER", offset),
         OP_LESS => simple_instruction("OP_LESS", offset),
         OP_NOT => simple_instruction("OP_NOT", offset),
+        OP_PRINT => simple_instruction("OP_PRINT", offset),
+        OP_POP => simple_instruction("OP_POP", offset),
+        OP_DEFINE_GLOBAL => constant_instruction("OP_DEFINE_GLOBAL", chunk, offset),
+        OP_GET_GLOBAL => constant_instruction("OP_GET_GLOBAL", chunk, offset),
+        OP_SET_GLOBAL => constant_instruction("OP_SET_GLOBAL", chunk, offset),
         _ => {
             println!("Unknown opcode: {}", instruction);
             offset + 1
