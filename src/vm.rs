@@ -7,6 +7,7 @@ pub struct VM {
     pub ip: usize, // instruction pointer
     pub stack: Vec<Value>,
     pub strings: HashMap<String, Value>,
+    pub globals: HashMap<String, Value>,
 }
 
 pub enum InterpretResult {
@@ -22,6 +23,7 @@ impl VM {
             ip: 0,
             stack: Vec::new(),
             strings: HashMap::new(),
+            globals: HashMap::new(),
         }
     }
 
@@ -74,6 +76,10 @@ impl VM {
         self.stack.pop().unwrap()
     }
 
+    pub fn peek(&self, distance: usize) -> Value {
+        self.stack[self.stack.len() - 1 - distance].clone()
+    }
+
     pub fn read_byte(&mut self) -> u8 {
         let byte = self.chunk.code[self.ip];
         self.ip += 1;
@@ -104,19 +110,16 @@ impl VM {
             let instruction = self.read_byte();
             match instruction {
                 OP_RETURN => {
-                    let result = self.stack_top();
-                    println!("VM execution stopped with result: {:?}", result);
+                    println!("VM execution completed successfully");
                     return InterpretResult::InterpretOk;
                 }
                 OP_NEGATE => {
-                    
                     if !self.stack_top().is_number() {
                         self.run_time_error("Operand must be a number");
                         return InterpretResult::InterpretRuntimeError;
                     }
                     let value = self.pop();
                     self.push(Value::new_number(-value.as_number().unwrap()));
-                    
                 }
                 OP_ADD => {
                     // value2 always comes forst as it's FIFO
@@ -124,9 +127,10 @@ impl VM {
                     let value1 = self.pop();
                     if value1.is_string() && value2.is_string() {
                         self.push(value1.string_concat(&value2));
-                    }
-                    else if value1.is_number() && value2.is_number() {
-                        self.push(Value::new_number(value1.as_number().unwrap() + value2.as_number().unwrap()));
+                    } else if value1.is_number() && value2.is_number() {
+                        self.push(Value::new_number(
+                            value1.as_number().unwrap() + value2.as_number().unwrap(),
+                        ));
                     } else {
                         self.run_time_error("Operands must be two numbers or two strings");
                         return InterpretResult::InterpretRuntimeError;
@@ -139,7 +143,9 @@ impl VM {
                         self.run_time_error("Operands must be numbers");
                         return InterpretResult::InterpretRuntimeError;
                     }
-                    self.push(Value::new_number(value1.as_number().unwrap() - value2.as_number().unwrap()));
+                    self.push(Value::new_number(
+                        value1.as_number().unwrap() - value2.as_number().unwrap(),
+                    ));
                 }
                 OP_MULTIPLY => {
                     let value2 = self.pop();
@@ -148,7 +154,9 @@ impl VM {
                         self.run_time_error("Operands must be numbers");
                         return InterpretResult::InterpretRuntimeError;
                     }
-                    self.push(Value::new_number(value1.as_number().unwrap() * value2.as_number().unwrap()));
+                    self.push(Value::new_number(
+                        value1.as_number().unwrap() * value2.as_number().unwrap(),
+                    ));
                 }
                 OP_DIVIDE => {
                     let value2 = self.pop();
@@ -157,42 +165,93 @@ impl VM {
                         self.run_time_error("Operands must be numbers");
                         return InterpretResult::InterpretRuntimeError;
                     }
-                    self.push(Value::new_number(value1.as_number().unwrap() / value2.as_number().unwrap()));
+                    self.push(Value::new_number(
+                        value1.as_number().unwrap() / value2.as_number().unwrap(),
+                    ));
                 }
                 OP_CONSTANT => {
                     let constant = self.read_constant();
                     println!("vm constant {:?}", &constant);
                     self.push(constant);
-
-                },
+                }
                 OP_NIL => {
                     self.push(Value::new_nil());
-                },
+                }
                 OP_TRUE => {
                     self.push(Value::new_bool(true));
-                },
+                }
                 OP_FALSE => {
                     self.push(Value::new_bool(false));
-                },
+                }
                 OP_EQUAL => {
                     let value2 = self.pop();
                     let value1 = self.pop();
                     self.push(Value::new_bool(value1.values_equal(&value2)));
-                },
+                }
                 OP_GREATER => {
                     let value2 = self.pop();
                     let value1 = self.pop();
-                    self.push(Value::new_bool(value1.as_number().unwrap() > value2.as_number().unwrap()));
-                },
+                    self.push(Value::new_bool(
+                        value1.as_number().unwrap() > value2.as_number().unwrap(),
+                    ));
+                }
                 OP_LESS => {
                     let value2 = self.pop();
                     let value1 = self.pop();
-                    self.push(Value::new_bool(value1.as_number().unwrap() < value2.as_number().unwrap()));
-                },
+                    self.push(Value::new_bool(
+                        value1.as_number().unwrap() < value2.as_number().unwrap(),
+                    ));
+                }
                 OP_NOT => {
                     let value = self.pop();
                     self.push(Value::new_bool(value.is_falsy()));
-                },
+                }
+                OP_PRINT => {
+                    let value = self.pop();
+                    println!("{:?}", value);
+                }
+                OP_POP => {
+                    self.pop();
+                }
+                OP_DEFINE_GLOBAL => {
+                    let name_value = self.read_constant();
+                    if let Some(name) = name_value.as_string() {
+                        let value = self.peek(0);
+                        self.globals.insert(name, value);
+                        self.pop();
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OP_GET_GLOBAL => {
+                    let name_value = self.read_constant();
+                    if let Some(name) = name_value.as_string() {
+                        let value = self.globals.get(&name).cloned();
+                        if let Some(value) = value {
+                            self.push(value);
+                        } else {
+                            self.run_time_error(&format!("Undefined variable '{}'", name));
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OP_SET_GLOBAL => {
+                    let name_value = self.read_constant();
+                    if let Some(name) = name_value.as_string() {
+                        if self.globals.contains_key(&name) {
+                            let value = self.peek(0);
+                            self.globals.insert(name, value.clone());
+                            // Don't pop - assignment expressions should leave the value on the stack
+                        } else {
+                            self.run_time_error(&format!("Undefined variable '{}'", name));
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
                 _ => return InterpretResult::InterpretRuntimeError,
             }
         }
@@ -201,16 +260,16 @@ impl VM {
     pub fn run_time_error(&mut self, message: &str) {
         // Print the error message to stderr
         eprintln!("{}", message);
-        
+
         // Calculate the instruction position (ip - 1 because we've already advanced past the current instruction)
         let instruction = if self.ip > 0 { self.ip - 1 } else { 0 };
-        
+
         // Get the line number for this instruction
         if instruction < self.chunk.lines.len() {
             let line = self.chunk.lines[instruction];
             eprintln!("[line {}] in script", line);
         }
-        
+
         // Reset the stack
         self.reset_stack();
     }
@@ -222,7 +281,7 @@ impl VM {
             // Return the existing string (this is a reference to the same string)
             return string;
         }
-        
+
         // If not found, add it to the string table and return it
         self.strings.insert(string.clone(), Value::new_nil());
         string
@@ -858,19 +917,19 @@ mod tests {
     #[test]
     fn test_string_interning() {
         let mut vm = VM::init_vm();
-        
+
         // Test that string interning works by checking the string table
         let result = vm.interpret("\"hello\"");
         assert!(matches!(result, InterpretResult::InterpretOk));
-        
+
         // The string should be in the string table
         assert!(vm.strings.contains_key("hello"));
-        
+
         // Test that the same string is reused
         let initial_count = vm.strings.len();
         let result2 = vm.interpret("\"hello\"");
         assert!(matches!(result2, InterpretResult::InterpretOk));
-        
+
         // The string table should not have grown (same string reused)
         assert_eq!(vm.strings.len(), initial_count);
     }
@@ -878,14 +937,14 @@ mod tests {
     #[test]
     fn test_string_interning_different_strings() {
         let mut vm = VM::init_vm();
-        
+
         // Test with different strings
         let result1 = vm.interpret("\"hello\"");
         assert!(matches!(result1, InterpretResult::InterpretOk));
-        
+
         let result2 = vm.interpret("\"world\"");
         assert!(matches!(result2, InterpretResult::InterpretOk));
-        
+
         // Both strings should be in the string table
         assert!(vm.strings.contains_key("hello"));
         assert!(vm.strings.contains_key("world"));

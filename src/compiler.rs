@@ -31,8 +31,8 @@ pub enum Precedence {
 }
 #[derive(Clone)]
 pub struct ParseRule<'a> {
-    pub prefix: Option<fn(&mut Compiler<'a>)>,
-    pub infix: Option<fn(&mut Compiler<'a>)>,
+    pub prefix: Option<fn(&mut Compiler<'a>, bool)>,
+    pub infix: Option<fn(&mut Compiler<'a>, bool)>,
     pub precedence: Precedence,
 }
 
@@ -198,7 +198,7 @@ impl<'a> ParseRules<'a> {
         rules.insert(
             TokenType::Identifier,
             ParseRule {
-                prefix: None,
+                prefix: Some(Compiler::variable),
                 infix: None,
                 precedence: Precedence::PrecNone,
             },
@@ -374,8 +374,6 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    
-
     pub fn new(string_table: &'a mut std::collections::HashMap<String, Value>) -> Self {
         Self {
             scanner: Scanner::new(""), // temporary empty string, will be set in compile
@@ -404,14 +402,128 @@ impl<'a> Compiler<'a> {
         self.scanner.init_scanner(source);
         self.parser.chunk = chunk.clone();
         self.advance();
-        // parsing a single expression
-        self.expression();
-        // we expect the end of expression
-        self.consume(TokenType::Eof, "Expect end of expression.");
+        while !self.match_token(TokenType::Eof) {
+            self.declaration();
+        }
         self.end_compiler();
         // Copy the result back to the original chunk
         *chunk = self.parser.chunk.clone();
         return !self.parser.had_error;
+    }
+
+    pub fn match_token(&mut self, token_type: TokenType) -> bool {
+        if self.parser.current.token_type == token_type {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+    pub fn declaration(&mut self) {
+        // we found start of variable
+        if self.match_token(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            // we found start of statement
+            self.statement();
+        }
+        if self.parser.panic_mode {
+            self.synchronize();
+        }
+    }
+    pub fn var_declaration(&mut self) {
+        // we define a global var
+        let global = self.parse_variable("Expect variable name.");
+        if self.match_token(TokenType::Equal) {
+            self.expression();
+        } else {
+            self.emit_byte(OpCode::OpNil as u8);
+        }
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        );
+        self.emit_bytes(OpCode::OpDefineGlobal as u8, global as u8);
+    }
+    pub fn parse_variable(&mut self, message: &str) -> usize {
+        self.consume(TokenType::Identifier, message);
+        // we use previous because in var x = 2; after calling
+        // self.consume(TokenType::Identifier, message); we are already at '='
+        self.identifier_constant(self.parser.previous)
+    }
+
+    pub fn identifier_constant(&mut self, name: Token) -> usize {
+        let lexeme = &self.scanner.source[name.start..name.start + name.length];
+        self.parser
+            .chunk
+            .add_constant(Value::new_string(lexeme.to_string()))
+    }
+
+    pub fn variable(&mut self, can_assign: bool) {
+        self.named_variable(self.parser.previous, can_assign);
+    }
+
+    pub fn variable_assignment(&mut self) {
+        self.named_variable(self.parser.previous, true);
+    }
+
+    pub fn named_variable(&mut self, name: Token, can_assign: bool) {
+        let arg = self.identifier_constant(name);
+        // first condition checks smth like book.chapter(one).page = 10;
+        // we don't want to evaluate the expression if we are assigning
+
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.expression();
+            self.emit_bytes(OpCode::OpSetGlobal as u8, arg as u8);
+        } else {
+            self.emit_bytes(OpCode::OpGetGlobal as u8, arg as u8);
+        }
+    }
+
+    pub fn synchronize(&mut self) {
+        // we skip all tokens until we find a statement boundary
+        self.parser.panic_mode = false;
+        while self.parser.current.token_type != TokenType::Eof {
+            if self.parser.previous.token_type == TokenType::Semicolon {
+                return;
+            }
+            match self.parser.current.token_type {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => {
+                    return;
+                }
+                _ => {}
+            }
+            self.advance();
+        }
+    }
+    pub fn statement(&mut self) {
+        if self.match_token(TokenType::Print) {
+            self.print_statement();
+        } else {
+            self.expression_statement();
+        }
+    }
+
+    pub fn print_statement(&mut self) {
+        // we consume everything after print
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit_byte(OpCode::OpPrint as u8);
+    }
+
+    pub fn expression_statement(&mut self) {
+        self.expression();
+        if self.match_token(TokenType::Semicolon) {
+            self.emit_byte(OpCode::OpPop as u8);
+        }
+        // For bare expressions, don't pop - let the value be returned
     }
 
     pub fn advance(&mut self) {
@@ -502,17 +614,17 @@ impl<'a> Compiler<'a> {
         self.parser.chunk.add_constant(value)
     }
     // number literal
-    pub fn number(&mut self) {
+    pub fn number(&mut self, _can_assign: bool) {
         let lexeme = &self.scanner.source
             [self.parser.previous.start..self.parser.previous.start + self.parser.previous.length];
         let value: f64 = lexeme.parse().unwrap_or(0.0);
         self.emit_constant(Value::new_number(value));
     }
     // string literal
-    pub fn string(&mut self) {
+    pub fn string(&mut self, _can_assign: bool) {
         let lexeme = &self.scanner.source
             [self.parser.previous.start..self.parser.previous.start + self.parser.previous.length];
-        
+
         let string_value = if let Some(string_table) = &mut self.string_table {
             // Use string interning if string table is available
             let interned_string = if let Some(existing_key) = string_table.get_key_value(lexeme) {
@@ -529,7 +641,7 @@ impl<'a> Compiler<'a> {
             // Fallback to normal string creation if no string table
             Value::new_string(lexeme.to_string())
         };
-        
+
         self.emit_constant(string_value);
     }
     pub fn parse_precedence(&mut self, precedence: Precedence) {
@@ -552,34 +664,40 @@ impl<'a> Compiler<'a> {
         // After parsing that, which may consume more tokens, the prefix expression is done. Now we look for an infix parser for the
         // next token. If we find one, it means the prefix expression we already compiled might be an operand for it. But only if the
         // call to parsePrecedence() has a precedence that is low enough to permit that infix operator
-        self.advance();
-        let rule = self.get_rule(self.parser.previous.token_type);
+
+        // can_assign logic: This prevents invalid assignments like a + b = c while allowing valid ones like a = b + c
+        let can_assign: bool = precedence <= Precedence::PrecAssignment;
+        let rule = self.get_rule(self.parser.current.token_type);
         if let Some(prefix_fn) = rule.prefix {
-            prefix_fn(self);
+            // Advance to make the token the previous token before calling prefix function
+            self.advance();
+            prefix_fn(self, can_assign);
         } else {
             self.error_at_current("Expect expression.");
-            return;
         }
 
         while precedence <= self.get_rule(self.parser.current.token_type).precedence {
             self.advance();
             let infix_rule = self.get_rule(self.parser.previous.token_type);
             if let Some(infix_fn) = infix_rule.infix {
-                infix_fn(self);
+                infix_fn(self, can_assign);
             } else {
                 break;
             }
         }
+        if can_assign && self.match_token(TokenType::Equal) {
+            self.error_at_current("Invalid assignment target.");
+        }
     }
     // grouping
-    pub fn grouping(&mut self) {
+    pub fn grouping(&mut self, _can_assign: bool) {
         // we assume the initial ( has been already consumed
         // so we can just parse the expression inside the parentheses
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
     // unary negation and logical not
-    pub fn unary(&mut self) {
+    pub fn unary(&mut self, _can_assign: bool) {
         // the leading token has been consumed and is sitting
         // in self.parser.previous
         let operator_type = self.parser.previous.token_type;
@@ -592,7 +710,7 @@ impl<'a> Compiler<'a> {
         }
     }
     // +, -, *, /
-    pub fn binary(&mut self) {
+    pub fn binary(&mut self, _can_assign: bool) {
         // When a prefix parser function is called, the leading token has already been consumed.
         // An infix parser function is even more in medias res—the entire left-hand operand
         // expression has already been compiled and the subsequent infix operator consumed.
@@ -646,7 +764,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn literal(&mut self) {
+    pub fn literal(&mut self, _can_assign: bool) {
         match self.parser.previous.token_type {
             TokenType::True => self.emit_byte(OpCode::OpTrue as u8),
             TokenType::False => self.emit_byte(OpCode::OpFalse as u8),
@@ -660,7 +778,6 @@ impl<'a> Compiler<'a> {
 mod tests {
     use super::*;
     use crate::chunk::Chunk;
-
 
     #[test]
     fn test_compiler_new() {
@@ -755,17 +872,29 @@ mod tests {
         compiler.scanner.init_scanner("42.5");
         compiler.advance(); // consume EOF, move to number token (now in current)
         compiler.advance(); // move number token to previous
-        
+
         let initial_constants = compiler.parser.chunk.constants.values.len();
-        compiler.number();
-        
+        compiler.number(true);
+
         // Should have added one constant
-        assert_eq!(compiler.parser.chunk.constants.values.len(), initial_constants + 1);
-        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], Value::new_number(42.5));
-        
+        assert_eq!(
+            compiler.parser.chunk.constants.values.len(),
+            initial_constants + 1
+        );
+        assert_eq!(
+            compiler.parser.chunk.constants.values[initial_constants],
+            Value::new_number(42.5)
+        );
+
         // Should have emitted OP_CONSTANT instruction
-        assert_eq!(compiler.parser.chunk.code[compiler.parser.chunk.code.len() - 2], OpCode::OpConstant as u8);
-        assert_eq!(compiler.parser.chunk.code[compiler.parser.chunk.code.len() - 1], initial_constants as u8);
+        assert_eq!(
+            compiler.parser.chunk.code[compiler.parser.chunk.code.len() - 2],
+            OpCode::OpConstant as u8
+        );
+        assert_eq!(
+            compiler.parser.chunk.code[compiler.parser.chunk.code.len() - 1],
+            initial_constants as u8
+        );
     }
 
     #[test]
@@ -775,13 +904,19 @@ mod tests {
         compiler.scanner.init_scanner("123");
         compiler.advance(); // consume EOF, move to number token (now in current)
         compiler.advance(); // move number token to previous
-        
+
         let initial_constants = compiler.parser.chunk.constants.values.len();
-        compiler.number();
-        
+        compiler.number(true);
+
         // Should have added one constant
-        assert_eq!(compiler.parser.chunk.constants.values.len(), initial_constants + 1);
-        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], Value::new_number(123.0));
+        assert_eq!(
+            compiler.parser.chunk.constants.values.len(),
+            initial_constants + 1
+        );
+        assert_eq!(
+            compiler.parser.chunk.constants.values[initial_constants],
+            Value::new_number(123.0)
+        );
     }
 
     #[test]
@@ -790,7 +925,7 @@ mod tests {
         let mut compiler = Compiler::new(&mut string_table);
         compiler.scanner.init_scanner("abc");
         compiler.advance(); // This won't be a number token, but let's test the method
-        
+
         // Manually set up a number token for testing
         compiler.parser.previous = Token {
             token_type: TokenType::Number,
@@ -798,13 +933,19 @@ mod tests {
             length: 3,
             line: 1,
         };
-        
+
         let initial_constants = compiler.parser.chunk.constants.values.len();
-        compiler.number();
-        
+        compiler.number(true);
+
         // Should handle invalid number as 0.0
-        assert_eq!(compiler.parser.chunk.constants.values.len(), initial_constants + 1);
-        assert_eq!(compiler.parser.chunk.constants.values[initial_constants], Value::new_number(0.0));
+        assert_eq!(
+            compiler.parser.chunk.constants.values.len(),
+            initial_constants + 1
+        );
+        assert_eq!(
+            compiler.parser.chunk.constants.values[initial_constants],
+            Value::new_number(0.0)
+        );
     }
 
     #[test]
@@ -812,11 +953,11 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "-5"
         let result = compiler.compile("-5", &mut chunk);
         assert!(result);
-        
+
         // Should have: OP_CONSTANT 5, OP_NEGATE, OP_RETURN
         assert_eq!(chunk.code.len(), 4);
         assert_eq!(chunk.code[0], OpCode::OpConstant as u8);
@@ -831,11 +972,11 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "1 + 2"
         let result = compiler.compile("1 + 2", &mut chunk);
         assert!(result);
-        
+
         // Should have: OP_CONSTANT 1, OP_CONSTANT 2, OP_ADD, OP_RETURN
         assert_eq!(chunk.code.len(), 6);
         assert_eq!(chunk.code[0], OpCode::OpConstant as u8);
@@ -853,11 +994,11 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "5 - 3"
         let result = compiler.compile("5 - 3", &mut chunk);
         assert!(result);
-        
+
         // Should have: OP_CONSTANT 5, OP_CONSTANT 3, OP_SUBTRACT, OP_RETURN
         assert_eq!(chunk.code.len(), 6);
         assert_eq!(chunk.code[4], OpCode::OpSubtract as u8);
@@ -870,11 +1011,11 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "3 * 4"
         let result = compiler.compile("3 * 4", &mut chunk);
         assert!(result);
-        
+
         // Should have: OP_CONSTANT 3, OP_CONSTANT 4, OP_MULTIPLY, OP_RETURN
         assert_eq!(chunk.code.len(), 6);
         assert_eq!(chunk.code[4], OpCode::OpMultiply as u8);
@@ -887,11 +1028,11 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "8 / 2"
         let result = compiler.compile("8 / 2", &mut chunk);
         assert!(result);
-        
+
         // Should have: OP_CONSTANT 8, OP_CONSTANT 2, OP_DIVIDE, OP_RETURN
         assert_eq!(chunk.code.len(), 6);
         assert_eq!(chunk.code[4], OpCode::OpDivide as u8);
@@ -904,11 +1045,11 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "(42)"
         let result = compiler.compile("(42)", &mut chunk);
         assert!(result);
-        
+
         // Should have: OP_CONSTANT 42, OP_RETURN
         assert_eq!(chunk.code.len(), 3);
         assert_eq!(chunk.code[0], OpCode::OpConstant as u8);
@@ -922,11 +1063,11 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "1 + 2 * 3" - should be 1 + (2 * 3) = 7, not (1 + 2) * 3 = 9
         let result = compiler.compile("1 + 2 * 3", &mut chunk);
         assert!(result);
-        
+
         // Should have: OP_CONSTANT 1, OP_CONSTANT 2, OP_CONSTANT 3, OP_MULTIPLY, OP_ADD, OP_RETURN
         assert_eq!(chunk.code.len(), 9);
         assert_eq!(chunk.code[0], OpCode::OpConstant as u8);
@@ -945,16 +1086,16 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "(1 + 2) * 3"
         let result = compiler.compile("(1 + 2) * 3", &mut chunk);
         assert!(result);
-        
+
         // Should have grouping change precedence
         assert_eq!(chunk.constants.values[0], Value::new_number(1.0));
         assert_eq!(chunk.constants.values[1], Value::new_number(2.0));
         assert_eq!(chunk.constants.values[2], Value::new_number(3.0));
-        
+
         // Find the ADD and MULTIPLY operations
         assert!(chunk.code.contains(&(OpCode::OpAdd as u8)));
         assert!(chunk.code.contains(&(OpCode::OpMultiply as u8)));
@@ -964,23 +1105,23 @@ mod tests {
     fn test_compiler_get_rule() {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
-        
+
         // Test known rules
         let plus_rule = compiler.get_rule(TokenType::Plus);
         assert!(plus_rule.prefix.is_none());
         assert!(plus_rule.infix.is_some());
         assert_eq!(plus_rule.precedence, Precedence::PrecTerm);
-        
+
         let minus_rule = compiler.get_rule(TokenType::Minus);
         assert!(minus_rule.prefix.is_some());
         assert!(minus_rule.infix.is_some());
         assert_eq!(minus_rule.precedence, Precedence::PrecTerm);
-        
+
         let number_rule = compiler.get_rule(TokenType::Number);
         assert!(number_rule.prefix.is_some());
         assert!(number_rule.infix.is_none());
         assert_eq!(number_rule.precedence, Precedence::PrecNone);
-        
+
         let paren_rule = compiler.get_rule(TokenType::LeftParen);
         assert!(paren_rule.prefix.is_some());
         assert!(paren_rule.infix.is_none());
@@ -991,12 +1132,27 @@ mod tests {
     fn test_compiler_get_next_precedence() {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
-        
-        assert_eq!(compiler.get_next_precedence(Precedence::PrecNone), Precedence::PrecAssignment);
-        assert_eq!(compiler.get_next_precedence(Precedence::PrecAssignment), Precedence::PrecOr);
-        assert_eq!(compiler.get_next_precedence(Precedence::PrecTerm), Precedence::PrecFactor);
-        assert_eq!(compiler.get_next_precedence(Precedence::PrecFactor), Precedence::PrecUnary);
-        assert_eq!(compiler.get_next_precedence(Precedence::PrecPrimary), Precedence::PrecPrimary);
+
+        assert_eq!(
+            compiler.get_next_precedence(Precedence::PrecNone),
+            Precedence::PrecAssignment
+        );
+        assert_eq!(
+            compiler.get_next_precedence(Precedence::PrecAssignment),
+            Precedence::PrecOr
+        );
+        assert_eq!(
+            compiler.get_next_precedence(Precedence::PrecTerm),
+            Precedence::PrecFactor
+        );
+        assert_eq!(
+            compiler.get_next_precedence(Precedence::PrecFactor),
+            Precedence::PrecUnary
+        );
+        assert_eq!(
+            compiler.get_next_precedence(Precedence::PrecPrimary),
+            Precedence::PrecPrimary
+        );
     }
 
     #[test]
@@ -1004,7 +1160,7 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test invalid expression
         let result = compiler.compile("1 +", &mut chunk);
         assert!(!result); // Should fail
@@ -1015,7 +1171,7 @@ mod tests {
     fn test_compiler_error_recovery() {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
-        
+
         // Test error_at method
         let token = Token {
             token_type: TokenType::Plus,
@@ -1023,15 +1179,15 @@ mod tests {
             length: 1,
             line: 1,
         };
-        
+
         assert!(!compiler.parser.panic_mode);
         assert!(!compiler.parser.had_error);
-        
+
         compiler.error_at(token, "Test error");
-        
+
         assert!(compiler.parser.panic_mode);
         assert!(compiler.parser.had_error);
-        
+
         // Second error should not change panic mode
         compiler.error_at(token, "Another error");
         assert!(compiler.parser.panic_mode);
@@ -1042,15 +1198,15 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         compiler.scanner.init_scanner("123 + 456");
-        
+
         // Initial state
         assert_eq!(compiler.parser.current.token_type, TokenType::Eof);
-        
+
         // First advance should get the first token
         compiler.advance();
         assert_eq!(compiler.parser.current.token_type, TokenType::Number);
         assert_eq!(compiler.parser.previous.token_type, TokenType::Eof);
-        
+
         // Second advance should get the plus
         compiler.advance();
         assert_eq!(compiler.parser.current.token_type, TokenType::Plus);
@@ -1063,7 +1219,7 @@ mod tests {
         let mut compiler = Compiler::new(&mut string_table);
         compiler.scanner.init_scanner("+");
         compiler.advance(); // Get the plus token
-        
+
         let token = compiler.consume(TokenType::Plus, "Expected plus");
         assert_eq!(token.token_type, TokenType::Plus);
         assert!(!compiler.parser.had_error);
@@ -1074,14 +1230,20 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         compiler.parser.chunk = Chunk::init_chunk();
-        
+
         let index1 = compiler.make_constant(Value::new_number(42.0));
         let index2 = compiler.make_constant(Value::new_number(3.14));
-        
+
         assert_eq!(index1, 0);
         assert_eq!(index2, 1);
-        assert_eq!(compiler.parser.chunk.constants.values[0], Value::new_number(42.0));
-        assert_eq!(compiler.parser.chunk.constants.values[1], Value::new_number(3.14));
+        assert_eq!(
+            compiler.parser.chunk.constants.values[0],
+            Value::new_number(42.0)
+        );
+        assert_eq!(
+            compiler.parser.chunk.constants.values[1],
+            Value::new_number(3.14)
+        );
     }
 
     #[test]
@@ -1095,10 +1257,10 @@ mod tests {
             length: 1,
             line: 5,
         };
-        
+
         let initial_len = compiler.parser.chunk.code.len();
         compiler.emit_byte(OpCode::OpAdd as u8);
-        
+
         assert_eq!(compiler.parser.chunk.code.len(), initial_len + 1);
         assert_eq!(compiler.parser.chunk.code[initial_len], OpCode::OpAdd as u8);
         assert_eq!(compiler.parser.chunk.lines[initial_len], 5);
@@ -1115,12 +1277,15 @@ mod tests {
             length: 1,
             line: 1,
         };
-        
+
         let initial_len = compiler.parser.chunk.code.len();
         compiler.emit_bytes(OpCode::OpConstant as u8, 42);
-        
+
         assert_eq!(compiler.parser.chunk.code.len(), initial_len + 2);
-        assert_eq!(compiler.parser.chunk.code[initial_len], OpCode::OpConstant as u8);
+        assert_eq!(
+            compiler.parser.chunk.code[initial_len],
+            OpCode::OpConstant as u8
+        );
         assert_eq!(compiler.parser.chunk.code[initial_len + 1], 42);
     }
 
@@ -1135,14 +1300,20 @@ mod tests {
             length: 1,
             line: 1,
         };
-        
+
         let initial_len = compiler.parser.chunk.code.len();
         compiler.emit_constant(Value::new_number(42.5));
-        
+
         assert_eq!(compiler.parser.chunk.code.len(), initial_len + 2);
-        assert_eq!(compiler.parser.chunk.code[initial_len], OpCode::OpConstant as u8);
+        assert_eq!(
+            compiler.parser.chunk.code[initial_len],
+            OpCode::OpConstant as u8
+        );
         assert_eq!(compiler.parser.chunk.code[initial_len + 1], 0); // constant index
-        assert_eq!(compiler.parser.chunk.constants.values[0], Value::new_number(42.5));
+        assert_eq!(
+            compiler.parser.chunk.constants.values[0],
+            Value::new_number(42.5)
+        );
     }
 
     #[test]
@@ -1150,11 +1321,11 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test "((1))"
         let result = compiler.compile("((1))", &mut chunk);
         assert!(result);
-        
+
         // Should just be a constant
         assert_eq!(chunk.constants.values[0], Value::new_number(1.0));
         assert!(chunk.code.contains(&(OpCode::OpConstant as u8)));
@@ -1166,12 +1337,15 @@ mod tests {
         let mut string_table = HashMap::new();
         let mut compiler = Compiler::new(&mut string_table);
         let mut chunk = Chunk::init_chunk();
-        
+
         // Test precise floating point number
         let result = compiler.compile("3.141592653589793", &mut chunk);
         assert!(result);
-        
-        assert_eq!(chunk.constants.values[0], Value::new_number(3.141592653589793));
+
+        assert_eq!(
+            chunk.constants.values[0],
+            Value::new_number(3.141592653589793)
+        );
     }
 
     // Tests for new literal parsing

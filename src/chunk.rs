@@ -17,7 +17,12 @@ pub enum OpCode {
     OpEqual,
     OpGreater,
     OpLess,
-    OpNot
+    OpNot,
+    OpPrint,
+    OpPop,
+    OpDefineGlobal,
+    OpGetGlobal,
+    OpSetGlobal,
 }
 
 /**
@@ -222,7 +227,10 @@ mod tests {
         // Test with very small numbers
         let small_index = chunk.add_constant(Value::new_number(f64::MIN_POSITIVE));
         assert_eq!(small_index, 3);
-        assert_eq!(chunk.constants.values[3], Value::new_number(f64::MIN_POSITIVE));
+        assert_eq!(
+            chunk.constants.values[3],
+            Value::new_number(f64::MIN_POSITIVE)
+        );
     }
 
     #[test]

@@ -147,7 +147,7 @@ impl<'a> Scanner<'a> {
         // Create token with adjusted start position to exclude the opening quote
         Token {
             token_type: TokenType::String,
-            start: self.start + 1, // Skip the opening quote
+            start: self.start + 1,                 // Skip the opening quote
             length: self.current - self.start - 2, // Exclude both quotes
             line: self.line,
         }
@@ -814,17 +814,26 @@ mod tests {
     fn test_scanner_check_keyword() {
         let mut scanner = Scanner::new("false");
         scanner.current = 5; // Set current to end of "false"
-        
+
         // Test check_keyword function directly
-        assert_eq!(scanner.check_keyword(0, 5, "false", TokenType::False), TokenType::False);
-        assert_eq!(scanner.check_keyword(0, 4, "true", TokenType::True), TokenType::Identifier);
-        assert_eq!(scanner.check_keyword(1, 3, "lse", TokenType::False), TokenType::Identifier);
+        assert_eq!(
+            scanner.check_keyword(0, 5, "false", TokenType::False),
+            TokenType::False
+        );
+        assert_eq!(
+            scanner.check_keyword(0, 4, "true", TokenType::True),
+            TokenType::Identifier
+        );
+        assert_eq!(
+            scanner.check_keyword(1, 3, "lse", TokenType::False),
+            TokenType::Identifier
+        );
     }
 
     #[test]
     fn test_scanner_is_digit() {
         let scanner = Scanner::new("");
-        
+
         assert!(scanner.is_digit(Some('0')));
         assert!(scanner.is_digit(Some('9')));
         assert!(scanner.is_digit(Some('5')));
@@ -837,7 +846,7 @@ mod tests {
     #[test]
     fn test_scanner_is_alpha() {
         let scanner = Scanner::new("");
-        
+
         assert!(scanner.is_alpha(Some('a')));
         assert!(scanner.is_alpha(Some('z')));
         assert!(scanner.is_alpha(Some('A')));
@@ -852,16 +861,16 @@ mod tests {
     #[test]
     fn test_scanner_complex_source() {
         let mut scanner = Scanner::new("var x = 42.5 + y * 3; // comment\nprint x;");
-        
+
         let expected_tokens = [
             TokenType::Var,
             TokenType::Identifier, // x
             TokenType::Equal,
-            TokenType::Number,     // 42.5
+            TokenType::Number, // 42.5
             TokenType::Plus,
             TokenType::Identifier, // y
             TokenType::Star,
-            TokenType::Number,     // 3
+            TokenType::Number, // 3
             TokenType::Semicolon,
             TokenType::Print,      // comment is skipped
             TokenType::Identifier, // x
@@ -882,17 +891,17 @@ mod tests {
     #[test]
     fn test_scanner_line_tracking() {
         let mut scanner = Scanner::new("line1\nline2\n\nline4");
-        
+
         // First token should be on line 1
         let token1 = scanner.scan_token();
         assert_eq!(token1.token_type, TokenType::Identifier);
         assert_eq!(token1.line, 1);
-        
+
         // Second token should be on line 2
         let token2 = scanner.scan_token();
         assert_eq!(token2.token_type, TokenType::Identifier);
         assert_eq!(token2.line, 2);
-        
+
         // Third token should be on line 4
         let token3 = scanner.scan_token();
         assert_eq!(token3.token_type, TokenType::Identifier);
@@ -902,13 +911,13 @@ mod tests {
     #[test]
     fn test_scanner_token_start_and_length() {
         let mut scanner = Scanner::new("  hello  world  ");
-        
+
         // First token: "hello"
         let token1 = scanner.scan_token();
         assert_eq!(token1.token_type, TokenType::Identifier);
         assert_eq!(token1.start, 2); // After whitespace
         assert_eq!(token1.length, 5); // "hello".len()
-        
+
         // Second token: "world"
         let token2 = scanner.scan_token();
         assert_eq!(token2.token_type, TokenType::Identifier);
