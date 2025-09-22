@@ -367,10 +367,19 @@ impl<'a> ParseRules<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Local {
+    pub name: String,
+    pub depth: i32,
+}
+const UINT8_COUNT: usize = 256;
 pub struct Compiler<'a> {
     pub scanner: Scanner<'a>,
     pub parser: Parser,
     pub string_table: Option<&'a mut std::collections::HashMap<String, Value>>,
+    pub locals: Vec<Local>,
+    pub local_count: usize,
+    pub scope_depth: i32,
 }
 
 impl<'a> Compiler<'a> {
@@ -395,6 +404,10 @@ impl<'a> Compiler<'a> {
                 chunk: Chunk::init_chunk(),
             },
             string_table: Some(string_table),
+            locals: Vec::new(),
+            local_count: 0,
+            scope_depth: 0
+
         }
     }
 
@@ -506,10 +519,22 @@ impl<'a> Compiler<'a> {
     pub fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
+        } else if self.match_token(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expression_statement();
         }
     }
+
+    pub fn block(&mut self) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.declaration();
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block.");
+    }
+    
 
     pub fn print_statement(&mut self) {
         // we consume everything after print
@@ -570,6 +595,23 @@ impl<'a> Compiler<'a> {
             self.error_at_current(message);
         }
         return self.parser.previous;
+    }
+
+    pub fn check(&self, token_type: TokenType) -> bool {
+        self.parser.current.token_type == token_type
+    }
+
+    pub fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    pub fn end_scope(&mut self) {
+        self.scope_depth -= 1;
+        
+        // Remove locals that are no longer in scope
+        while self.local_count > 0 && self.locals[self.local_count - 1].depth > self.scope_depth {
+            self.local_count -= 1;
+        }
     }
 
     pub fn emit_byte(&mut self, byte: u8) {
