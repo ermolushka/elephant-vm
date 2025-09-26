@@ -209,6 +209,7 @@ For the expression `5 > 3 == true`:
   - Comparison operations (equal, greater, less)
   - Logical operations (not)
   - Constant loading and manipulation
+  - Local variable operations (get/set local)
   - Error handling and debugging support
 - **Chunk (`src/chunk.rs`)**: Bytecode storage and management
   - Dynamic bytecode arrays with constant pools
@@ -218,7 +219,7 @@ For the expression `5 > 3 == true`:
   - Type checking and safe value access
   - Cross-type equality and truthiness evaluation
 - **Debug System (`src/debug.rs`)**: Disassembly and debugging tools
-- **Compiler (`src/compiler.rs`)**: Pratt parser implementation with expression parsing
+- **Compiler (`src/compiler.rs`)**: Pratt parser implementation with expression parsing and local variables
   - **Number literals** - Parse and emit constants for numeric values
   - **Boolean and nil literals** - Parse true, false, nil values
   - **Binary operations** - Addition, subtraction, multiplication, division with correct precedence
@@ -228,13 +229,17 @@ For the expression `5 > 3 == true`:
   - **Parse rules** - Token-to-function mapping with precedence handling
   - **Error handling** - Panic mode error recovery
   - **Precedence parsing** - Operator precedence climbing algorithm
+  - **Local variables** - Lexical scoping with block statements
+  - **Variable shadowing** - Nested scopes can redefine variables
+  - **Global variables** - Top-level variable declarations
+  - **Scope management** - Automatic cleanup of local variables
 
 **In Progress**:
-- Additional language features (variables, control flow, functions)
+- Additional language features (control flow, functions)
 
 ## Testing
 
-**Comprehensive Test Coverage - 175 Tests**:
+**Comprehensive Test Coverage - 196 Tests**:
 
 ```bash
 # Run all tests
@@ -248,14 +253,6 @@ cargo test compiler::tests
 cargo test scanner::tests
 cargo test vm::tests
 ```
-
-**Test Coverage**:
-- **Scanner (40+ tests)**: Tokenization, keywords, strings, numbers, comments, whitespace, UTF-8, error handling
-- **Compiler (40+ tests)**: Expression parsing, binary/unary operations, boolean literals, comparison operations, precedence, error handling, bytecode generation  
-- **VM (45+ tests)**: Arithmetic operations, boolean operations, comparison operations, logical operations, stack management, constant handling, error cases
-- **Chunk (15+ tests)**: Bytecode storage, constant pools, line tracking
-- **Value (20+ tests)**: Value type system, boolean/nil/number operations, type checking, equality testing, truthiness evaluation
-- **Debug (15+ tests)**: Disassembly, instruction formatting
 
 ## Architecture Details
 
@@ -349,8 +346,14 @@ src/
 - Grouping: `(expression)`
 - Complex expressions: `!(5 > 3) == false`, `2 + 3 > 4`
 
+**Variables**:
+- Global variables: `var x = 42;`
+- Local variables with lexical scoping: `{ var x = 42; x; }`
+- Variable assignment: `x = 10;`
+- Variable shadowing in nested scopes
+- Block statements with automatic scope cleanup
+
 **Planned**:
-- Variables and assignment
 - Control flow (if/else, loops)
 - Function definitions and calls
 - String operations

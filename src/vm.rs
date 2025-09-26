@@ -252,6 +252,14 @@ impl VM {
                         return InterpretResult::InterpretRuntimeError;
                     }
                 }
+                OP_GET_LOCAL => {
+                    let local_index = self.read_byte() as usize;
+                    self.push(self.stack[local_index].clone());
+                }
+                OP_SET_LOCAL => {
+                    let local_index = self.read_byte() as usize;
+                    self.stack[local_index] = self.peek(0);
+                }
                 _ => return InterpretResult::InterpretRuntimeError,
             }
         }
@@ -949,5 +957,149 @@ mod tests {
         assert!(vm.strings.contains_key("hello"));
         assert!(vm.strings.contains_key("world"));
         assert_eq!(vm.strings.len(), 2);
+    }
+
+    #[test]
+    fn test_vm_interpret_get_local() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        // Set up stack with local variables: [local0, local1, local2]
+        let const_index1 = chunk.add_constant(Value::new_number(10.0));
+        let const_index2 = chunk.add_constant(Value::new_number(20.0));
+        let const_index3 = chunk.add_constant(Value::new_number(30.0));
+
+        // Push constants onto stack (simulating local variables)
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index1 as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index2 as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index3 as u8, 1);
+
+        // Get local at index 1 (should push 20.0)
+        chunk.write_chunk(OP_GET_LOCAL, 1);
+        chunk.write_chunk(1, 1); // local index 1
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_number(20.0));
+        assert_eq!(vm.stack.len(), 4); // Original 3 locals + the pushed value
+    }
+
+    #[test]
+    fn test_vm_interpret_set_local() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        // Set up stack with local variables: [local0=10, local1=20, local2=30]
+        let const_index1 = chunk.add_constant(Value::new_number(10.0));
+        let const_index2 = chunk.add_constant(Value::new_number(20.0));
+        let const_index3 = chunk.add_constant(Value::new_number(30.0));
+        let const_index_new = chunk.add_constant(Value::new_number(99.0));
+
+        // Push constants onto stack (simulating local variables)
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index1 as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index2 as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index3 as u8, 1);
+
+        // Push new value and set local at index 1
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index_new as u8, 1);
+        chunk.write_chunk(OP_SET_LOCAL, 1);
+        chunk.write_chunk(1, 1); // local index 1
+
+        // Get local at index 1 to verify it was set
+        chunk.write_chunk(OP_GET_LOCAL, 1);
+        chunk.write_chunk(1, 1); // local index 1
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_number(99.0));
+        assert_eq!(vm.stack[1], Value::new_number(99.0)); // Local 1 should be updated
+    }
+
+    #[test]
+    fn test_vm_interpret_local_variable_operations() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        // Simulate: { var x = 5; var y = 10; x = x + y; x; }
+        let const_index5 = chunk.add_constant(Value::new_number(5.0));
+        let const_index10 = chunk.add_constant(Value::new_number(10.0));
+
+        // var x = 5; (push 5)
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index5 as u8, 1);
+
+        // var y = 10; (push 10)
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index10 as u8, 1);
+
+        // x = x + y; (get x, get y, add, set x)
+        chunk.write_chunk(OP_GET_LOCAL, 1);
+        chunk.write_chunk(1, 1); // x (stack[1])
+        chunk.write_chunk(OP_GET_LOCAL, 1);
+        chunk.write_chunk(0, 1); // y (stack[0])
+        chunk.write_chunk(OpCode::OpAdd as u8, 1);
+        chunk.write_chunk(OP_SET_LOCAL, 1);
+        chunk.write_chunk(1, 1); // set x
+
+        // x; (get x)
+        chunk.write_chunk(OP_GET_LOCAL, 1);
+        chunk.write_chunk(1, 1);
+
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_number(15.0)); // 5 + 10 = 15
+        assert_eq!(vm.stack[1], Value::new_number(15.0)); // x should be 15
+    }
+
+    #[test]
+    fn test_vm_interpret_local_stack_management() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        // Test that local variables are accessed from correct stack positions
+        let const_index1 = chunk.add_constant(Value::new_number(1.0));
+        let const_index2 = chunk.add_constant(Value::new_number(2.0));
+        let const_index3 = chunk.add_constant(Value::new_number(3.0));
+
+        // Push three locals: [1, 2, 3]
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index1 as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index2 as u8, 1);
+        chunk.write_chunk(OpCode::OpConstant as u8, 1);
+        chunk.write_chunk(const_index3 as u8, 1);
+
+        // Access locals by index (higher indices are deeper in stack)
+        chunk.write_chunk(OP_GET_LOCAL, 1);
+        chunk.write_chunk(2, 1); // get stack[2] = 3.0
+        chunk.write_chunk(OP_GET_LOCAL, 1);
+        chunk.write_chunk(1, 1); // get stack[1] = 2.0
+        chunk.write_chunk(OP_GET_LOCAL, 1);
+        chunk.write_chunk(0, 1); // get stack[0] = 1.0
+
+        chunk.write_chunk(OpCode::OpReturn as u8, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+
+        // Stack should be [1, 2, 3, 3, 2, 1] - original locals plus accessed values
+        assert_eq!(vm.stack.len(), 6);
+        assert_eq!(vm.stack[0], Value::new_number(1.0));
+        assert_eq!(vm.stack[1], Value::new_number(2.0));
+        assert_eq!(vm.stack[2], Value::new_number(3.0));
+        assert_eq!(vm.stack[3], Value::new_number(3.0)); // stack[2]
+        assert_eq!(vm.stack[4], Value::new_number(2.0)); // stack[1]
+        assert_eq!(vm.stack_top(), Value::new_number(1.0)); // stack[0]
     }
 }
