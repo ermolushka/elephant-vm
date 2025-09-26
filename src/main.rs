@@ -17,7 +17,7 @@ fn main() {
         let file_path = args().nth(1).unwrap();
         let _ = run_file(&mut vm, &file_path);
     } else {
-        println!("Usage: lox [script]");
+        println!("Usage: elephant-vm [script]");
         exit(64);
     }
 
@@ -25,7 +25,7 @@ fn main() {
 }
 
 fn repl(vm: &mut VM) {
-    println!("Welcome to the Lox repl!");
+    println!("Welcome to the Elephant VM repl!");
     loop {
         print!("> ");
         let mut input = String::new();

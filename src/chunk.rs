@@ -3,6 +3,7 @@ use crate::value::{Value, ValueArray};
 /**
  * types of operation codes
  */
+#[derive(Clone, Copy)]
 pub enum OpCode {
     OpReturn,
     OpConstant,
@@ -23,6 +24,8 @@ pub enum OpCode {
     OpDefineGlobal,
     OpGetGlobal,
     OpSetGlobal,
+    OpGetLocal,
+    OpSetLocal,
 }
 
 /**

@@ -19,6 +19,8 @@ pub const OP_POP: u8 = OpCode::OpPop as u8;
 pub const OP_DEFINE_GLOBAL: u8 = OpCode::OpDefineGlobal as u8;
 pub const OP_GET_GLOBAL: u8 = OpCode::OpGetGlobal as u8;
 pub const OP_SET_GLOBAL: u8 = OpCode::OpSetGlobal as u8;
+pub const OP_GET_LOCAL: u8 = OpCode::OpGetLocal as u8;
+pub const OP_SET_LOCAL: u8 = OpCode::OpSetLocal as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -59,6 +61,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_DEFINE_GLOBAL => constant_instruction("OP_DEFINE_GLOBAL", chunk, offset),
         OP_GET_GLOBAL => constant_instruction("OP_GET_GLOBAL", chunk, offset),
         OP_SET_GLOBAL => constant_instruction("OP_SET_GLOBAL", chunk, offset),
+        OP_GET_LOCAL => byte_instruction("OP_GET_LOCAL", chunk, offset),
+        OP_SET_LOCAL => byte_instruction("OP_SET_LOCAL", chunk, offset),
         _ => {
             println!("Unknown opcode: {}", instruction);
             offset + 1
@@ -80,6 +84,11 @@ pub fn constant_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     offset + 2 // 2 because we have opcode and operand
 }
 
+pub fn byte_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
+    let constant = chunk.code[offset + 1];
+    println!("{:16} {:4}", name, constant);
+    offset + 2 // 2 because we have opcode and operand
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,5 +406,85 @@ mod tests {
 
         // Test that we don't go beyond chunk bounds - this should panic
         disassemble_instruction(&chunk, 1);
+    }
+
+    #[test]
+    fn test_byte_instruction() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Test byte instruction (like OP_GET_LOCAL, OP_SET_LOCAL)
+        chunk.write_chunk(OP_GET_LOCAL, 5);
+        chunk.write_chunk(3, 5); // local index 3
+
+        let offset = byte_instruction("OP_GET_LOCAL", &chunk, 0);
+        assert_eq!(offset, 2); // byte instruction should advance by 2
+    }
+
+    #[test]
+    fn test_disassemble_instruction_get_local() {
+        let mut chunk = Chunk::init_chunk();
+        chunk.write_chunk(OP_GET_LOCAL, 10);
+        chunk.write_chunk(2, 10); // local index 2
+
+        let new_offset = disassemble_instruction(&chunk, 0);
+        assert_eq!(new_offset, 2); // byte instruction should advance by 2
+    }
+
+    #[test]
+    fn test_disassemble_instruction_set_local() {
+        let mut chunk = Chunk::init_chunk();
+        chunk.write_chunk(OP_SET_LOCAL, 15);
+        chunk.write_chunk(1, 15); // local index 1
+
+        let new_offset = disassemble_instruction(&chunk, 0);
+        assert_eq!(new_offset, 2); // byte instruction should advance by 2
+    }
+
+    #[test]
+    fn test_disassemble_instruction_with_local_opcodes() {
+        let mut chunk = Chunk::init_chunk();
+
+        // Test local opcodes specifically
+        let opcodes = vec![
+            OpCode::OpGetLocal,
+            OpCode::OpSetLocal,
+        ];
+
+        for (i, opcode) in opcodes.iter().enumerate() {
+            let line = i as u32 + 1;
+            chunk.write_chunk(*opcode as u8, line);
+            chunk.write_chunk(i as u8 % 4, line); // local index 0-3
+        }
+
+        // Disassemble all instructions
+        let mut offset = 0;
+        while offset < chunk.code.len() {
+            offset = disassemble_instruction(&chunk, offset);
+        }
+    }
+
+    #[test]
+    fn test_local_opcode_constants() {
+        // Test that all opcode constants are properly defined
+        assert_eq!(OP_RETURN, OpCode::OpReturn as u8);
+        assert_eq!(OP_CONSTANT, OpCode::OpConstant as u8);
+        assert_eq!(OP_NIL, OpCode::OpNil as u8);
+        assert_eq!(OP_TRUE, OpCode::OpTrue as u8);
+        assert_eq!(OP_FALSE, OpCode::OpFalse as u8);
+        assert_eq!(OP_POP, OpCode::OpPop as u8);
+        assert_eq!(OP_GET_LOCAL, OpCode::OpGetLocal as u8);
+        assert_eq!(OP_SET_LOCAL, OpCode::OpSetLocal as u8);
+        assert_eq!(OP_GET_GLOBAL, OpCode::OpGetGlobal as u8);
+        assert_eq!(OP_DEFINE_GLOBAL, OpCode::OpDefineGlobal as u8);
+        assert_eq!(OP_SET_GLOBAL, OpCode::OpSetGlobal as u8);
+        assert_eq!(OP_EQUAL, OpCode::OpEqual as u8);
+        assert_eq!(OP_GREATER, OpCode::OpGreater as u8);
+        assert_eq!(OP_LESS, OpCode::OpLess as u8);
+        assert_eq!(OP_ADD, OpCode::OpAdd as u8);
+        assert_eq!(OP_SUBTRACT, OpCode::OpSubtract as u8);
+        assert_eq!(OP_MULTIPLY, OpCode::OpMultiply as u8);
+        assert_eq!(OP_DIVIDE, OpCode::OpDivide as u8);
+        assert_eq!(OP_NOT, OpCode::OpNot as u8);
+        assert_eq!(OP_NEGATE, OpCode::OpNegate as u8);
     }
 }

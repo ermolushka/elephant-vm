@@ -406,8 +406,7 @@ impl<'a> Compiler<'a> {
             string_table: Some(string_table),
             locals: Vec::new(),
             local_count: 0,
-            scope_depth: 0
-
+            scope_depth: 0,
         }
     }
 
@@ -445,24 +444,74 @@ impl<'a> Compiler<'a> {
         }
     }
     pub fn var_declaration(&mut self) {
-        // we define a global var
         let global = self.parse_variable("Expect variable name.");
         if self.match_token(TokenType::Equal) {
             self.expression();
         } else {
             self.emit_byte(OpCode::OpNil as u8);
         }
+        self.mark_initialized();
         self.consume(
             TokenType::Semicolon,
             "Expect ';' after variable declaration.",
         );
-        self.emit_bytes(OpCode::OpDefineGlobal as u8, global as u8);
+        if self.scope_depth == 0 {
+            self.emit_bytes(OpCode::OpDefineGlobal as u8, global as u8);
+        }
     }
     pub fn parse_variable(&mut self, message: &str) -> usize {
         self.consume(TokenType::Identifier, message);
+
+        self.declare_variable();
+        // At runtime, locals aren’t looked up by name. There’s no need to stuff the variable’s
+        // name into the constant table, so if the declaration is inside a local scope, we return a dummy table index instead.
+        if self.scope_depth > 0 {
+            return 0;
+        }
         // we use previous because in var x = 2; after calling
         // self.consume(TokenType::Identifier, message); we are already at '='
         self.identifier_constant(self.parser.previous)
+    }
+
+    pub fn declare_variable(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
+        let token = self.parser.previous;
+        let name = self.scanner.source[token.start..token.start + token.length].to_string();
+        // detect error if 2 variables with the same name are declared in the same scope
+        for i in (0..self.locals.len()).rev() {
+            if self.locals[i].depth != -1 && self.locals[i].depth < self.scope_depth {
+                break;
+            }
+            if self.identifiers_equal(&name, &self.locals[i].name) {
+                self.error_at(
+                    token,
+                    "Variable with this name already declared in this scope.",
+                );
+            }
+        }
+        self.add_local(&name);
+    }
+
+    pub fn identifiers_equal(&self, a: &str, b: &str) -> bool {
+        a == b
+    }
+
+    pub fn add_local(&mut self, name: &str) {
+        // we get var name from source
+
+        self.locals.push(Local {
+            name: name.to_string(),
+            depth: -1,
+        });
+        self.local_count += 1;
+    }
+
+    pub fn mark_initialized(&mut self) {
+        if self.scope_depth > 0 {
+            self.locals[self.local_count - 1].depth = self.scope_depth;
+        }
     }
 
     pub fn identifier_constant(&mut self, name: Token) -> usize {
@@ -481,16 +530,42 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn named_variable(&mut self, name: Token, can_assign: bool) {
-        let arg = self.identifier_constant(name);
+        let mut get_op = OpCode::OpGetGlobal;
+        let mut set_op = OpCode::OpSetGlobal;
+        let mut arg = self.resolve_local(name);
+        if arg != -1 {
+            get_op = OpCode::OpGetLocal;
+            set_op = OpCode::OpSetLocal;
+        } else {
+            arg = self.identifier_constant(name) as i8;
+            get_op = OpCode::OpGetGlobal;
+            set_op = OpCode::OpSetGlobal;
+        }
+
         // first condition checks smth like book.chapter(one).page = 10;
         // we don't want to evaluate the expression if we are assigning
 
         if can_assign && self.match_token(TokenType::Equal) {
             self.expression();
-            self.emit_bytes(OpCode::OpSetGlobal as u8, arg as u8);
+            self.emit_bytes(set_op as u8, arg as u8);
         } else {
-            self.emit_bytes(OpCode::OpGetGlobal as u8, arg as u8);
+            self.emit_bytes(get_op as u8, arg as u8);
         }
+    }
+
+    pub fn resolve_local(&mut self, name: Token) -> i8 {
+        let lexeme = &self.scanner.source[name.start..name.start + name.length];
+        for i in (0..self.locals.len()).rev() {
+            if self.identifiers_equal(&lexeme, &self.locals[i].name) {
+                if self.locals[i].depth == -1 {
+                    // If this is an uninitialized local in the current scope,
+                    // continue searching for the variable in outer scopes
+                    continue;
+                }
+                return i as i8;
+            }
+        }
+        -1
     }
 
     pub fn synchronize(&mut self) {
@@ -534,7 +609,6 @@ impl<'a> Compiler<'a> {
         }
         self.consume(TokenType::RightBrace, "Expect '}' after block.");
     }
-    
 
     pub fn print_statement(&mut self) {
         // we consume everything after print
@@ -607,9 +681,11 @@ impl<'a> Compiler<'a> {
 
     pub fn end_scope(&mut self) {
         self.scope_depth -= 1;
-        
+
         // Remove locals that are no longer in scope
         while self.local_count > 0 && self.locals[self.local_count - 1].depth > self.scope_depth {
+            self.locals.pop();
+            self.emit_byte(OpCode::OpPop as u8);
             self.local_count -= 1;
         }
     }
@@ -1655,5 +1731,219 @@ mod tests {
         assert_eq!(chunk.constants.values[0], Value::new_number(2.0));
         assert_eq!(chunk.constants.values[1], Value::new_number(3.0));
         assert_eq!(chunk.constants.values[2], Value::new_number(4.0));
+    }
+
+    #[test]
+    fn test_compiler_global_variable_declaration() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("var x = 42;", &mut chunk);
+        assert!(result);
+
+        // Global variables use OP_DEFINE_GLOBAL
+        assert!(chunk.code.contains(&(OpCode::OpDefineGlobal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpReturn as u8)));
+        assert_eq!(chunk.constants.values.len(), 2); // One for the variable name, one for the value
+        assert_eq!(chunk.constants.values[1], Value::new_number(42.0));
+    }
+
+    #[test]
+    fn test_compiler_local_variable_access() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("{ var x = 42; x; }", &mut chunk);
+        assert!(result);
+
+        // Should contain OP_CONSTANT (for 42), OP_GET_LOCAL (for accessing x), OP_POP (cleanup), OP_RETURN
+        assert!(chunk.code.contains(&(OpCode::OpConstant as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpGetLocal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpPop as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpReturn as u8)));
+
+        // Should NOT contain OP_SET_LOCAL for declaration (locals are just on stack)
+        assert!(!chunk.code.contains(&(OpCode::OpSetLocal as u8)));
+    }
+
+    #[test]
+    fn test_compiler_nested_scopes() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("{
+            var a = 1;
+            {
+                var b = 2;
+                a;
+                b;
+            }
+        }", &mut chunk);
+        assert!(result);
+
+        // Should contain multiple local operations and pops for scope cleanup
+        let set_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpSetLocal as u8).count();
+        let get_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpGetLocal as u8).count();
+        let pop_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPop as u8).count();
+
+        assert_eq!(set_local_count, 0); // Variable declarations don't use SET_LOCAL
+        assert!(get_local_count >= 2); // At least 2 variables accessed
+        assert!(pop_count >= 2); // At least 2 pops for scope cleanup
+    }
+
+    #[test]
+    fn test_compiler_variable_shadowing() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("{
+            var a = \"outer\";
+            {
+                var a = \"inner\";
+                a;
+            }
+            a;
+        }", &mut chunk);
+        assert!(result);
+
+        // Should have constants for both "outer" and "inner" strings
+        assert!(chunk.constants.values.len() >= 2);
+        assert!(chunk.constants.values.contains(&Value::new_string("outer".to_string())));
+        assert!(chunk.constants.values.contains(&Value::new_string("inner".to_string())));
+    }
+
+    #[test]
+    fn test_compiler_global_vs_local_variables() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("var global = \"global\";
+        {
+            var local = \"local\";
+            global;
+            local;
+        }", &mut chunk);
+        assert!(result);
+
+        // Should have both global and local operations
+        assert!(chunk.code.contains(&(OpCode::OpDefineGlobal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpGetGlobal as u8)));
+        // Local declarations don't emit SET_LOCAL, only assignments do
+        assert!(!chunk.code.contains(&(OpCode::OpSetLocal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpGetLocal as u8)));
+    }
+
+    #[test]
+    fn test_compiler_local_variable_assignment() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("{ var x = 1; x = 2; x; }", &mut chunk);
+        assert!(result);
+
+        // Should have SET_LOCAL followed by GET_LOCAL
+        let set_local_indices: Vec<usize> = chunk.code.iter().enumerate()
+            .filter(|&(_, &x)| x == OpCode::OpSetLocal as u8)
+            .map(|(i, _)| i)
+            .collect();
+
+        let get_local_indices: Vec<usize> = chunk.code.iter().enumerate()
+            .filter(|&(_, &x)| x == OpCode::OpGetLocal as u8)
+            .map(|(i, _)| i)
+            .collect();
+
+        assert!(!set_local_indices.is_empty());
+        assert!(!get_local_indices.is_empty());
+        // GET_LOCAL should come after SET_LOCAL
+        assert!(get_local_indices.iter().any(|&gi| set_local_indices.iter().any(|&si| gi > si)));
+    }
+
+    #[test]
+    fn test_compiler_multiple_local_variables() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("{ var a = 1; var b = 2; var c = 3; a; b; c; }", &mut chunk);
+        assert!(result);
+
+        let set_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpSetLocal as u8).count();
+        let get_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpGetLocal as u8).count();
+
+        assert_eq!(set_local_count, 0); // Variable declarations don't use SET_LOCAL
+        assert_eq!(get_local_count, 3); // Three variables accessed
+    }
+
+    #[test]
+    fn test_compiler_local_variable_scope_cleanup() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("{ var x = 1; }", &mut chunk);
+        assert!(result);
+
+        // Should end with OP_POP for scope cleanup, then OP_RETURN
+        let len = chunk.code.len();
+        assert!(len >= 4); // At least CONSTANT, SET_LOCAL, POP, RETURN
+
+        // Last two opcodes should be POP and RETURN
+        assert_eq!(chunk.code[len-2], OpCode::OpPop as u8);
+        assert_eq!(chunk.code[len-1], OpCode::OpReturn as u8);
+    }
+
+    #[test]
+    fn test_compiler_deeply_nested_scopes() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("{
+            var a = 1;
+            {
+                var b = 2;
+                {
+                    var c = 3;
+                    {
+                        var d = 4;
+                        a; b; c; d;
+                    }
+                }
+            }
+        }", &mut chunk);
+        assert!(result);
+
+        let set_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpSetLocal as u8).count();
+        let get_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpGetLocal as u8).count();
+        let pop_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPop as u8).count();
+
+        assert_eq!(set_local_count, 0); // Variable declarations don't use SET_LOCAL
+        assert_eq!(get_local_count, 4); // Four variables accessed
+        assert!(pop_count >= 4); // At least 4 pops for scope cleanup
+    }
+
+    #[test]
+    fn test_compiler_local_variable_in_expression() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("{ var x = 5; var y = x + 3; y; }", &mut chunk);
+        assert!(result);
+
+        // Should contain arithmetic operations with local variables
+        assert!(chunk.code.contains(&(OpCode::OpAdd as u8)));
+        let set_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpSetLocal as u8).count();
+        let get_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpGetLocal as u8).count();
+
+        // Variable declarations don't use SET_LOCAL, only assignments do
+        assert_eq!(set_local_count, 0); // No assignments, only declarations
+        assert!(get_local_count >= 2); // At least two local variable accesses (x in expression, y at end)
     }
 }

@@ -1,5 +1,18 @@
-var second = "second part";
-print second;
-var first = "first part "; 
-var total = first + second;
-print total;
+var b = 14;
+{
+    var a = 2;
+    print a;
+    print b;
+    {
+        var c = 1331;
+        print c;
+        print a;
+        print b;
+    }
+    {
+    var a = "outer";
+    {
+        var a = a;
+    }
+    }
+}
