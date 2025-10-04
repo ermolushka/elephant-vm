@@ -21,6 +21,9 @@ pub const OP_GET_GLOBAL: u8 = OpCode::OpGetGlobal as u8;
 pub const OP_SET_GLOBAL: u8 = OpCode::OpSetGlobal as u8;
 pub const OP_GET_LOCAL: u8 = OpCode::OpGetLocal as u8;
 pub const OP_SET_LOCAL: u8 = OpCode::OpSetLocal as u8;
+pub const OP_JUMP_IF_FALSE: u8 = OpCode::OpJumpIfFalse as u8;
+pub const OP_JUMP: u8 = OpCode::OpJump as u8;
+pub const OP_LOOP: u8 = OpCode::OpLoop as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -63,11 +66,43 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_SET_GLOBAL => constant_instruction("OP_SET_GLOBAL", chunk, offset),
         OP_GET_LOCAL => byte_instruction("OP_GET_LOCAL", chunk, offset),
         OP_SET_LOCAL => byte_instruction("OP_SET_LOCAL", chunk, offset),
+        OP_JUMP_IF_FALSE => jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset),
+        OP_JUMP => jump_instruction("OP_JUMP", 1, chunk, offset),
+        OP_LOOP => jump_instruction("OP_LOOP", -1, chunk, offset),
+
         _ => {
             println!("Unknown opcode: {}", instruction);
             offset + 1
         }
     }
+}
+
+pub fn jump_instruction(name: &str, sign: i32, chunk: &Chunk, offset: usize) -> usize {
+    // Read 16-bit jump value (big-endian format)
+    let jump = ((chunk.code[offset + 1] as u16) << 8) | (chunk.code[offset + 2] as u16);
+    
+    // Calculate destination: offset + 3 + sign * jump
+    // Use checked arithmetic to prevent overflow/underflow
+    let base_offset = offset + 3;
+    let jump_offset = (sign * jump as i32) as isize;
+    let destination = if jump_offset >= 0 {
+        base_offset + jump_offset as usize
+    } else {
+        // Handle negative jump (for OP_LOOP)
+        let abs_jump = (-jump_offset) as usize;
+        if abs_jump <= base_offset {
+            base_offset - abs_jump
+        } else {
+            // If jump would go before start, just show 0
+            0
+        }
+    };
+    
+    // Print formatted output
+    println!("{:16} {:4} -> {}", name, offset, destination);
+    
+    // Return new offset (offset + 3)
+    offset + 3
 }
 
 pub fn simple_instruction(name: &str, offset: usize) -> usize {
@@ -486,5 +521,85 @@ mod tests {
         assert_eq!(OP_DIVIDE, OpCode::OpDivide as u8);
         assert_eq!(OP_NOT, OpCode::OpNot as u8);
         assert_eq!(OP_NEGATE, OpCode::OpNegate as u8);
+        assert_eq!(OP_JUMP_IF_FALSE, OpCode::OpJumpIfFalse as u8);
+        assert_eq!(OP_JUMP, OpCode::OpJump as u8);
+    }
+
+    #[test]
+    fn test_jump_instruction() {
+        let mut chunk = Chunk::init_chunk();
+        
+        // Create a jump instruction with jump value 0x1234 (4660 in decimal)
+        chunk.write_chunk(OP_JUMP, 10);
+        chunk.write_chunk(0x12, 10); // high byte
+        chunk.write_chunk(0x34, 10); // low byte
+        
+        let offset = jump_instruction("OP_JUMP", 1, &chunk, 0);
+        assert_eq!(offset, 3); // should advance by 3 bytes
+    }
+
+    #[test]
+    fn test_jump_instruction_negative_sign() {
+        let mut chunk = Chunk::init_chunk();
+        
+        // Create a jump instruction with jump value 0x0001
+        chunk.write_chunk(OP_JUMP_IF_FALSE, 5);
+        chunk.write_chunk(0x00, 5); // high byte
+        chunk.write_chunk(0x01, 5); // low byte
+        
+        let offset = jump_instruction("OP_JUMP_IF_FALSE", -1, &chunk, 0);
+        assert_eq!(offset, 3); // should advance by 3 bytes
+    }
+
+    #[test]
+    fn test_jump_instruction_zero_jump() {
+        let mut chunk = Chunk::init_chunk();
+        
+        // Create a jump instruction with jump value 0x0000
+        chunk.write_chunk(OP_JUMP, 1);
+        chunk.write_chunk(0x00, 1); // high byte
+        chunk.write_chunk(0x00, 1); // low byte
+        
+        let offset = jump_instruction("OP_JUMP", 1, &chunk, 0);
+        assert_eq!(offset, 3); // should advance by 3 bytes
+    }
+
+    #[test]
+    fn test_jump_instruction_max_jump() {
+        let mut chunk = Chunk::init_chunk();
+        
+        // Create a jump instruction with maximum jump value 0xFFFF
+        chunk.write_chunk(OP_JUMP, 1);
+        chunk.write_chunk(0xFF, 1); // high byte
+        chunk.write_chunk(0xFF, 1); // low byte
+        
+        let offset = jump_instruction("OP_JUMP", 1, &chunk, 0);
+        assert_eq!(offset, 3); // should advance by 3 bytes
+    }
+
+    #[test]
+    fn test_disassemble_instruction_jump() {
+        let mut chunk = Chunk::init_chunk();
+        
+        // Create a jump instruction
+        chunk.write_chunk(OP_JUMP, 10);
+        chunk.write_chunk(0x12, 10);
+        chunk.write_chunk(0x34, 10);
+        
+        let new_offset = disassemble_instruction(&chunk, 0);
+        assert_eq!(new_offset, 3); // jump instruction should advance by 3
+    }
+
+    #[test]
+    fn test_disassemble_instruction_jump_if_false() {
+        let mut chunk = Chunk::init_chunk();
+        
+        // Create a jump if false instruction
+        chunk.write_chunk(OP_JUMP_IF_FALSE, 15);
+        chunk.write_chunk(0x00, 15);
+        chunk.write_chunk(0x05, 15);
+        
+        let new_offset = disassemble_instruction(&chunk, 0);
+        assert_eq!(new_offset, 3); // jump instruction should advance by 3
     }
 }

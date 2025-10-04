@@ -16,3 +16,7 @@ var b = 14;
     }
     }
 }
+
+if (4 > 2) {
+    print "if works";
+}

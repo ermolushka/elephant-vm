@@ -101,6 +101,13 @@ impl VM {
         self.chunk.constants.values[constant_index].clone()
     }
 
+    pub fn read_short(&mut self) -> u16 {
+        // Read 16-bit value (big-endian format)
+        let high_byte = self.read_byte() as u16;
+        let low_byte = self.read_byte() as u16;
+        (high_byte << 8) | low_byte
+    }
+
     pub fn run(&mut self) -> InterpretResult {
         println!("VM execution started");
         loop {
@@ -211,6 +218,10 @@ impl VM {
                     println!("{:?}", value);
                 }
                 OP_POP => {
+                    if self.stack.is_empty() {
+                        println!("ERROR: Trying to pop from empty stack at instruction {}", self.ip - 1);
+                        return InterpretResult::InterpretRuntimeError;
+                    }
                     self.pop();
                 }
                 OP_DEFINE_GLOBAL => {
@@ -259,6 +270,25 @@ impl VM {
                 OP_SET_LOCAL => {
                     let local_index = self.read_byte() as usize;
                     self.stack[local_index] = self.peek(0);
+                }
+                OP_JUMP_IF_FALSE => {
+                    let condition = self.pop();
+                    if condition.is_falsy() {
+                        let jump = self.read_short();
+                        self.ip += jump as usize;
+                    } else {
+                        // Skip the jump bytes if condition is true
+                        self.read_byte(); // Skip high byte
+                        self.read_byte(); // Skip low byte
+                    }
+                }
+                OP_JUMP => {
+                    let jump = self.read_short();
+                    self.ip += jump as usize;
+                }
+                OP_LOOP => {
+                    let offset = self.read_short();
+                    self.ip -= offset as usize;
                 }
                 _ => return InterpretResult::InterpretRuntimeError,
             }
@@ -1101,5 +1131,188 @@ mod tests {
         assert_eq!(vm.stack[3], Value::new_number(3.0)); // stack[2]
         assert_eq!(vm.stack[4], Value::new_number(2.0)); // stack[1]
         assert_eq!(vm.stack_top(), Value::new_number(1.0)); // stack[0]
+    }
+
+    // Tests for control flow execution
+
+    #[test]
+    fn test_vm_interpret_if_statement_true() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("if (true) print \"executed\";");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_if_statement_false() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("if (false) print \"not executed\";");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_if_else_statement() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("if (false) print \"if\"; else print \"else\";");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_if_with_expression() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("if (5 > 3) print \"greater\";");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_nested_if_statements() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("if (true) { if (false) print \"inner\"; else print \"nested\"; }");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_while_loop() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("var i = 3; while (i > 0) { print i; i = i - 1; }");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_while_loop_false_condition() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("var i = 0; while (i > 5) { print \"never\"; i = i + 1; }");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_for_loop() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("for (var i = 1; i <= 3; i = i + 1) print i;");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_for_loop_no_initializer() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("var j = 5; for (; j < 8; j = j + 1) print j;");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_nested_loops() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret(
+            "for (var i = 1; i < 3; i = i + 1) { for (var j = 1; j < 3; j = j + 1) print i + j; }"
+        );
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_control_flow_with_variables() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret(
+            "var x = 10; if (x > 5) { while (x > 7) { x = x - 1; } } print x;"
+        );
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_complex_control_flow() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret(
+            "var result = 0; for (var i = 1; i <= 5; i = i + 1) { if (i > 3) result = result + i; } print result;"
+        );
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_control_flow_stack_management() {
+        let mut vm = VM::init_vm();
+        // This should not cause stack underflow errors
+        let result = vm.interpret(
+            "if (true) print \"a\"; while (false) print \"b\"; for (var i = 0; i < 1; i = i + 1) print \"c\";"
+        );
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_if_statement_with_local_variables() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("{ var x = 5; if (x == 5) print \"local\"; }");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_while_with_local_scope() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret("{ var count = 2; while (count > 0) { print count; count = count - 1; } }");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_for_with_nested_scopes() {
+        let mut vm = VM::init_vm();
+        let result = vm.interpret(
+            "for (var i = 1; i < 3; i = i + 1) { var temp = i * 2; print temp; }"
+        );
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_control_flow_jump_instructions() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        // Test basic OP_JUMP_IF_FALSE execution
+        chunk.write_chunk(OP_FALSE, 1);
+        chunk.write_chunk(OP_JUMP_IF_FALSE, 1);
+        chunk.write_chunk(0x00, 1); // high byte of jump offset
+        chunk.write_chunk(0x03, 1); // low byte of jump offset (skip next 3 bytes)
+        chunk.write_chunk(OP_TRUE, 1);  // This should be skipped
+        chunk.write_chunk(OP_TRUE, 1);  // This should be skipped
+        chunk.write_chunk(OP_TRUE, 1);  // This should be skipped
+        chunk.write_chunk(OP_RETURN, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert!(vm.stack.is_empty()); // Stack should be empty after false condition jump
+    }
+
+    #[test]
+    fn test_vm_control_flow_jump_no_jump() {
+        let mut vm = VM::init_vm();
+        let mut chunk = Chunk::init_chunk();
+
+        // Test OP_JUMP_IF_FALSE with true condition (should not jump)
+        chunk.write_chunk(OP_TRUE, 1);
+        chunk.write_chunk(OP_JUMP_IF_FALSE, 1);
+        chunk.write_chunk(0x00, 1); // high byte of jump offset
+        chunk.write_chunk(0x03, 1); // low byte of jump offset 
+        chunk.write_chunk(OP_FALSE, 1); // This should execute
+        chunk.write_chunk(OP_RETURN, 1);
+
+        let result = vm.interpret_chunk(&chunk);
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        assert_eq!(vm.stack_top(), Value::new_bool(false)); // Should have executed OP_FALSE
+    }
+
+    #[test]
+    fn test_vm_control_flow_bytecode_operations() {
+        let mut vm = VM::init_vm();
+        
+        // Test that the jump instructions work correctly through high-level interpretation
+        // This avoids manual bytecode construction which can be error-prone with offsets
+        
+        // Test basic if statement execution
+        let result = vm.interpret("if (false) print \"should not execute\";");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+        
+        // Test basic loop that should not execute
+        let result2 = vm.interpret("var x = 0; while (x > 5) print \"should not loop\";");
+        assert!(matches!(result2, InterpretResult::InterpretOk));
+        
+        // Test for loop with controlled execution
+        let result3 = vm.interpret("for (var i = 0; i < 1; i = i + 1) print \"executed once\";");
+        assert!(matches!(result3, InterpretResult::InterpretOk));
     }
 }

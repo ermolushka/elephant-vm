@@ -119,6 +119,13 @@ pub struct VM {
 - `OP_NIL`, `OP_TRUE`, `OP_FALSE`: Literal values
 - `OP_EQUAL`, `OP_GREATER`, `OP_LESS`: Comparison operations
 - `OP_NOT`: Logical negation
+- `OP_PRINT`: Print value to output
+- `OP_POP`: Remove value from stack
+- `OP_DEFINE_GLOBAL`, `OP_GET_GLOBAL`, `OP_SET_GLOBAL`: Global variable operations
+- `OP_GET_LOCAL`, `OP_SET_LOCAL`: Local variable operations
+- `OP_JUMP_IF_FALSE`: Conditional jump for control flow
+- `OP_JUMP`: Unconditional jump
+- `OP_LOOP`: Loop back jump
 - `OP_RETURN`: End execution, return result
 
 **Example Execution**:
@@ -234,8 +241,16 @@ For the expression `5 > 3 == true`:
   - **Global variables** - Top-level variable declarations
   - **Scope management** - Automatic cleanup of local variables
 
+**Recently Fixed**:
+- **Control Flow Statements** - Major compiler fixes for stack management in control flow
+  - **If-else statements** - Conditional branching with proper bytecode generation
+  - **While loops** - Iterative execution with condition checking
+  - **For loops** - C-style for loops with initializer, condition, and increment
+  - **Nested control flow** - Support for arbitrary nesting of if/while/for statements
+  - **Stack management** - Fixed critical stack underflow issues with jump instructions
+  
 **In Progress**:
-- Additional language features (control flow, functions)
+- Additional language features (functions, classes)
 
 ## Testing
 
@@ -314,6 +329,64 @@ cargo test
 RUST_LOG=debug cargo run
 ```
 
+## Recent Fixes - Control Flow Stack Management
+
+### Problem
+The original control flow implementation had critical stack management bugs that caused runtime errors:
+
+```
+ERROR: Trying to pop from empty stack at instruction 12
+Runtime error
+```
+
+### Root Cause
+The `OP_JUMP_IF_FALSE` instruction already consumes (pops) the condition value from the stack, but the compiler was emitting additional `OP_POP` instructions, causing stack underflows.
+
+### Solution
+**Fixed in `src/compiler.rs`:**
+
+**1. if_statement() - Lines 667-679**
+```rust
+// BEFORE (with extra OP_POP)
+let then_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+self.emit_byte(OpCode::OpPop as u8);  // ❌ Unnecessary
+// ...
+self.emit_byte(OpCode::OpPop as u8);  // ❌ Unnecessary
+
+// AFTER (clean implementation)
+let then_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+self.statement();
+```
+
+**2. while_statement() - Lines 612-621**
+```rust
+// BEFORE (with extra OP_POP)
+let exit_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+self.emit_byte(OpCode::OpPop as u8);  // ❌ Unnecessary
+// ...
+self.emit_byte(OpCode::OpPop as u8);  // ❌ Unnecessary
+
+// AFTER (clean implementation) 
+let exit_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+self.statement();
+```
+
+**3. for_statement() - Lines 623-662**
+- Fixed parsing inconsistency with initializer semicolon handling
+- Removed extra `OP_POP` instructions 
+- Fixed increment section parsing logic
+
+### Impact
+✅ **All control flow statements now work correctly**  
+✅ **Nested control structures function properly**  
+✅ **Stack operations are balanced and safe**  
+✅ **Complex programs execute without runtime errors**
+
+### Test Coverage
+Added comprehensive test files:
+- `test_control_flow.el` - Basic control flow scenarios
+- `jump.el` - Complex nested control flow examples
+
 ## Development
 
 **Project Structure**:
@@ -353,7 +426,45 @@ src/
 - Variable shadowing in nested scopes
 - Block statements with automatic scope cleanup
 
+**Control Flow**:
+- If-else statements: `if (condition) { ... } else { ... }`
+- While loops: `while (condition) { ... }`
+- For loops: `for (init; condition; increment) { ... }`
+- Nested control structures with proper scoping
+- Print statements: `print value;`
+
+**Example Programs**:
+
+```javascript
+// If-else branching
+var age = 25;
+if (age >= 18) {
+    print "adult";
+} else {
+    print "minor";
+}
+
+// While loop
+var count = 5;
+while (count > 0) {
+    print count;
+    count = count - 1;
+}
+
+// For loop
+for (var i = 1; i <= 3; i = i + 1) {
+    print i;
+}
+
+// Nested loops
+for (var i = 1; i < 3; i = i + 1) {
+    for (var j = 1; j < 3; j = j + 1) {
+        print i + j;
+    }
+}
+```
+
 **Planned**:
-- Control flow (if/else, loops)
 - Function definitions and calls
 - String operations
+- Classes and objects

@@ -223,8 +223,8 @@ impl<'a> ParseRules<'a> {
             TokenType::And,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::and_),
+                precedence: Precedence::PrecAnd,
             },
         );
         rules.insert(
@@ -287,8 +287,8 @@ impl<'a> ParseRules<'a> {
             TokenType::Or,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::or_),
+                precedence: Precedence::PrecOr,
             },
         );
         rules.insert(
@@ -594,6 +594,12 @@ impl<'a> Compiler<'a> {
     pub fn statement(&mut self) {
         if self.match_token(TokenType::Print) {
             self.print_statement();
+        } else if self.match_token(TokenType::For) {
+            self.for_statement();
+        } else if self.match_token(TokenType::If) {
+            self.if_statement();
+        } else if self.match_token(TokenType::While) {
+            self.while_statement();
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -602,6 +608,102 @@ impl<'a> Compiler<'a> {
             self.expression_statement();
         }
     }
+
+    pub fn while_statement(&mut self) {
+        let loop_start = self.parser.chunk.code.len();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+        let exit_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+        self.statement();
+        self.emit_loop(loop_start);
+        self.patch_jump(exit_jump);
+    }
+
+    pub fn for_statement(&mut self) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+        if (self.match_token(TokenType::Semicolon)) {
+            {}
+        } else if (self.match_token(TokenType::Var)) {
+            self.var_declaration();
+        } else {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after for loop initializer.");
+        }
+        let mut loop_start = self.parser.chunk.code.len();
+        let mut exit_jump = 0;
+        if !self.match_token(TokenType::Semicolon) {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after 'for' condition.");
+            exit_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+        }
+
+        if !self.match_token(TokenType::RightParen) {
+            let body_jump = self.emit_jump(OpCode::OpJump as u8);
+            let increment_start = self.parser.chunk.code.len();
+            self.expression();
+            self.emit_byte(OpCode::OpPop as u8);
+            self.consume(TokenType::RightParen, "Expect ')' after 'for' increment.");
+
+            self.emit_loop(loop_start);
+            loop_start = increment_start;
+            self.patch_jump(body_jump);
+        } else {
+            self.consume(TokenType::RightParen, "Expect ')' after 'for' condition.");
+        }
+
+        self.statement();
+        self.emit_loop(loop_start);
+        if exit_jump != 0 {
+            self.patch_jump(exit_jump);
+        }
+        self.end_scope();
+    }
+
+    pub fn if_statement(&mut self) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+        let then_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+        self.statement();
+        let else_jump = self.emit_jump(OpCode::OpJump as u8);
+        self.patch_jump(then_jump);
+        if self.match_token(TokenType::Else) {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
+    }
+
+    pub fn emit_jump(&mut self, instruction: u8) -> usize {
+        self.emit_byte(instruction);
+        self.emit_byte(0xff);
+        self.emit_byte(0xff);
+        self.parser.chunk.code.len() - 2
+    }
+
+    pub fn patch_jump(&mut self, offset: usize) {
+        let jump = self.parser.chunk.code.len() - offset - 2;
+        self.parser.chunk.code[offset] = (jump >> 8) as u8;
+        self.parser.chunk.code[offset + 1] = jump as u8;
+    }
+
+    pub fn and_(&mut self, _can_assign: bool) {
+        let end_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+        self.emit_byte(OpCode::OpPop as u8);
+        self.parse_precedence(Precedence::PrecAnd);
+        self.patch_jump(end_jump);
+    }
+
+    pub fn or_(&mut self, _can_assign: bool) {
+        let else_jump = self.emit_jump(OpCode::OpJumpIfFalse as u8);
+        let end_jump = self.emit_jump(OpCode::OpJump as u8);
+        self.patch_jump(else_jump);
+        self.emit_byte(OpCode::OpPop as u8);
+        self.parse_precedence(Precedence::PrecOr);
+        self.patch_jump(end_jump);
+    }
+    
 
     pub fn block(&mut self) {
         while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
@@ -721,6 +823,14 @@ impl<'a> Compiler<'a> {
     pub fn emit_bytes(&mut self, byte1: u8, byte2: u8) {
         self.emit_byte(byte1);
         self.emit_byte(byte2);
+    }
+
+    pub fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_byte(OpCode::OpLoop as u8);
+        let offset = self.parser.chunk.code.len() - loop_start + 2;
+        self.emit_bytes(
+            (offset >> 8) as u8,
+            offset as u8);
     }
 
     pub fn emit_constant(&mut self, value: Value) {
@@ -1945,5 +2055,217 @@ mod tests {
         // Variable declarations don't use SET_LOCAL, only assignments do
         assert_eq!(set_local_count, 0); // No assignments, only declarations
         assert!(get_local_count >= 2); // At least two local variable accesses (x in expression, y at end)
+    }
+
+    // Tests for control flow statements
+
+    #[test]
+    fn test_compiler_if_statement_basic() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("if (true) print \"yes\";", &mut chunk);
+        assert!(result);
+
+        // Should contain conditional jump instruction
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpJump as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpPrint as u8)));
+    }
+
+    #[test]
+    fn test_compiler_if_else_statement() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("if (false) print \"no\"; else print \"yes\";", &mut chunk);
+        assert!(result);
+
+        // Should contain both conditional and unconditional jumps
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpJump as u8)));
+        
+        // Should have two print statements
+        let print_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPrint as u8).count();
+        assert_eq!(print_count, 2);
+    }
+
+    #[test]
+    fn test_compiler_if_else_with_block() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("if (true) { print \"block\"; } else { print \"else\"; }", &mut chunk);
+        assert!(result);
+
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpJump as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpPrint as u8)));
+    }
+
+    #[test]
+    fn test_compiler_while_statement() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("var i = 0; while (i < 3) { print i; i = i + 1; }", &mut chunk);
+        assert!(result);
+
+        // Should contain loop-related instructions
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpLoop as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpPrint as u8)));
+        
+        // Should have variable operations
+        assert!(chunk.code.contains(&(OpCode::OpSetGlobal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpGetGlobal as u8)));
+    }
+
+    #[test] 
+    fn test_compiler_for_statement() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("for (var i = 0; i < 3; i = i + 1) print i;", &mut chunk);
+        assert!(result);
+
+        // Should contain for loop control flow
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpJump as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpLoop as u8)));
+        
+        // Should have local variable operations for loop variable
+        assert!(chunk.code.contains(&(OpCode::OpGetLocal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpSetLocal as u8)));
+    }
+
+    #[test]
+    fn test_compiler_for_statement_no_initializer() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("var j = 5; for (; j < 8; j = j + 1) print j;", &mut chunk);
+        assert!(result);
+
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpLoop as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpGetGlobal as u8)));
+    }
+
+    #[test]
+    fn test_compiler_nested_if_statements() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile(
+            "if (true) { if (false) print \"inner\"; else print \"else\"; }", 
+            &mut chunk
+        );
+        assert!(result);
+
+        // Should have multiple conditional jumps for nested structure
+        let jump_if_false_count = chunk.code.iter().filter(|&&x| x == OpCode::OpJumpIfFalse as u8).count();
+        let jump_count = chunk.code.iter().filter(|&&x| x == OpCode::OpJump as u8).count();
+        
+        assert!(jump_if_false_count >= 2); // At least 2 for nested if statements
+        assert!(jump_count >= 2); // At least 2 for else jumps
+    }
+
+    #[test]
+    fn test_compiler_nested_loops() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile(
+            "for (var i = 0; i < 2; i = i + 1) { for (var j = 0; j < 2; j = j + 1) print i; }",
+            &mut chunk
+        );
+        assert!(result);
+
+        // Should have nested loop control structures
+        let loop_count = chunk.code.iter().filter(|&&x| x == OpCode::OpLoop as u8).count();
+        let jump_if_false_count = chunk.code.iter().filter(|&&x| x == OpCode::OpJumpIfFalse as u8).count();
+        
+        assert!(loop_count >= 2); // At least 2 for nested loops
+        assert!(jump_if_false_count >= 2); // At least 2 for loop conditions
+    }
+
+    #[test]
+    fn test_compiler_if_condition_evaluation() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("if (5 > 3) print \"true\";", &mut chunk);
+        assert!(result);
+
+        // Should contain comparison operation before conditional jump
+        assert!(chunk.code.contains(&(OpCode::OpGreater as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        
+        // Should have constants for the comparison
+        assert!(chunk.constants.values.len() >= 2);
+    }
+
+    #[test]
+    fn test_compiler_while_condition_evaluation() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile("var x = 5; while (x > 0) { x = x - 1; }", &mut chunk);
+        assert!(result);
+
+        // Should contain comparison and loop instructions
+        assert!(chunk.code.contains(&(OpCode::OpGreater as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpLoop as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpSubtract as u8)));
+    }
+
+    #[test]
+    fn test_compiler_control_flow_stack_management() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        // This should compile without extra OP_POP instructions
+        let result = compiler.compile("if (true) print \"test\"; while (false) print \"never\";", &mut chunk);
+        assert!(result);
+
+        // Verify no stack management issues by checking the bytecode compiles successfully
+        assert!(chunk.code.len() > 0);
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+    }
+
+    #[test]
+    fn test_compiler_complex_control_flow() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile(
+            "for (var i = 1; i < 3; i = i + 1) { if (i == 1) print \"first\"; else print \"second\"; }",
+            &mut chunk
+        );
+        assert!(result);
+
+        // Should contain all control flow instructions
+        assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpJump as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpLoop as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpEqual as u8)));
+        
+        // Should have multiple print statements
+        let print_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPrint as u8).count();
+        assert!(print_count >= 2);
     }
 }

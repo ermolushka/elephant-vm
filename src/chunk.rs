@@ -26,6 +26,9 @@ pub enum OpCode {
     OpSetGlobal,
     OpGetLocal,
     OpSetLocal,
+    OpJumpIfFalse,
+    OpJump,
+    OpLoop,
 }
 
 /**
