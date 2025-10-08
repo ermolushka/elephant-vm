@@ -17,6 +17,7 @@ pub struct VM {
     pub frames: Vec<CallFrame>,
     pub strings: HashMap<String, Value>,
     pub globals: HashMap<String, Value>,
+    pub debug: bool,
 }
 
 pub enum InterpretResult {
@@ -26,7 +27,7 @@ pub enum InterpretResult {
 }
 
 impl VM {
-    pub fn init_vm() -> Self {
+    pub fn init_vm(debug: Option<bool>) -> Self {
         Self {
             chunk: Chunk::init_chunk(),
             ip: 0,
@@ -34,6 +35,7 @@ impl VM {
             frames: Vec::new(),
             strings: HashMap::new(),
             globals: HashMap::new(),
+            debug: debug.unwrap_or(false),
         }
     }
 
@@ -57,7 +59,7 @@ impl VM {
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        let mut compiler = Compiler::new(&mut self.strings);
+        let mut compiler = Compiler::new(&mut self.strings, self.debug);
         // we create an empty chunk and pass to compiler
         // it will fill up the chunk with the bytecode
         let mut chunk = Chunk::init_chunk();
@@ -241,7 +243,10 @@ impl VM {
                 }
                 OP_POP => {
                     if self.stack.is_empty() {
-                        println!("ERROR: Trying to pop from empty stack at instruction {}", self.ip - 1);
+                        println!(
+                            "ERROR: Trying to pop from empty stack at instruction {}",
+                            self.ip - 1
+                        );
                         return InterpretResult::InterpretRuntimeError;
                     }
                     self.pop();
@@ -402,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_vm_init() {
-        let vm = VM::init_vm();
+        let vm = VM::init_vm(None);
         assert!(vm.stack.is_empty());
         assert_eq!(vm.ip, 0);
         assert!(vm.chunk.code.is_empty());
@@ -410,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_vm_stack_operations() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         // Test push
         vm.push(Value::new_number(42.0));
@@ -425,7 +430,7 @@ mod tests {
 
     #[test]
     fn test_vm_stack_top() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         // Test empty stack
         assert_eq!(vm.stack_top(), Value::new_number(0.0));
@@ -438,7 +443,7 @@ mod tests {
 
     #[test]
     fn test_vm_reset_stack() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         vm.push(Value::new_number(1.0));
         vm.push(Value::new_number(2.0));
         vm.push(Value::new_number(3.0));
@@ -450,7 +455,7 @@ mod tests {
 
     #[test]
     fn test_vm_free_vm() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         vm.push(Value::new_number(1.0));
         vm.push(Value::new_number(2.0));
         vm.ip = 10;
@@ -463,7 +468,7 @@ mod tests {
 
     #[test]
     fn test_vm_read_byte() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         vm.chunk.write_chunk(42, 1);
         vm.chunk.write_chunk(100, 1);
 
@@ -475,7 +480,7 @@ mod tests {
 
     #[test]
     fn test_vm_read_constant() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let constant_index = vm.chunk.add_constant(Value::new_number(3.14));
         vm.chunk.write_chunk(constant_index as u8, 1);
 
@@ -487,7 +492,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_simple_return() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
         chunk.write_chunk(OpCode::OpReturn as u8, 1);
 
@@ -497,7 +502,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_constant() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let constant_index = chunk.add_constant(Value::new_number(42.0));
@@ -512,7 +517,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_negate() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let constant_index = chunk.add_constant(Value::new_number(10.0));
@@ -528,7 +533,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_add() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(5.0));
@@ -548,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_subtract() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(10.0));
@@ -568,7 +573,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_multiply() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(6.0));
@@ -588,7 +593,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_divide() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(20.0));
@@ -608,7 +613,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_complex_expression() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Calculate: (10 + 5) * 2 - 3
@@ -651,7 +656,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_unknown_opcode() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(255, 1); // Unknown opcode
@@ -663,7 +668,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "index out of bounds")]
     fn test_vm_interpret_empty_chunk() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let chunk = Chunk::init_chunk();
 
         // This should panic when trying to read from an empty chunk
@@ -672,7 +677,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_negative_numbers() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const_index = chunk.add_constant(Value::new_number(-15.0));
@@ -687,7 +692,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_floating_point_arithmetic() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(3.14));
@@ -707,7 +712,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_division_by_zero() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(10.0));
@@ -729,7 +734,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_nil() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(OP_NIL, 1);
@@ -743,7 +748,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_true() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(OP_TRUE, 1);
@@ -758,7 +763,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_false() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(OP_FALSE, 1);
@@ -773,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_equal_numbers() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(42.0));
@@ -793,7 +798,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_equal_bools() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(OP_TRUE, 1);
@@ -808,7 +813,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_equal_nils() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(OP_NIL, 1);
@@ -823,7 +828,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_not_equal_different_types() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const_index = chunk.add_constant(Value::new_number(42.0));
@@ -840,7 +845,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_greater() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(5.0));
@@ -860,7 +865,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_greater_false() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(3.0));
@@ -880,7 +885,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_less() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(3.0));
@@ -900,7 +905,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_less_false() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const1_index = chunk.add_constant(Value::new_number(5.0));
@@ -920,7 +925,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_not_true() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(OP_TRUE, 1);
@@ -934,7 +939,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_not_false() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(OP_FALSE, 1);
@@ -948,7 +953,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_not_nil() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         chunk.write_chunk(OP_NIL, 1);
@@ -962,7 +967,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_not_number() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         let const_index = chunk.add_constant(Value::new_number(42.0));
@@ -978,7 +983,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_complex_boolean_expression() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Test: !(true == false)
@@ -995,7 +1000,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_comparison_chain() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Test: 5 > 3 == true
@@ -1018,7 +1023,7 @@ mod tests {
 
     #[test]
     fn test_string_interning() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         // Test that string interning works by checking the string table
         let result = vm.interpret("\"hello\"");
@@ -1038,7 +1043,7 @@ mod tests {
 
     #[test]
     fn test_string_interning_different_strings() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         // Test with different strings
         let result1 = vm.interpret("\"hello\"");
@@ -1055,7 +1060,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_get_local() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Set up stack with local variables: [local0, local1, local2]
@@ -1084,7 +1089,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_set_local() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Set up stack with local variables: [local0=10, local1=20, local2=30]
@@ -1120,7 +1125,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_local_variable_operations() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Simulate: { var x = 5; var y = 10; x = x + y; x; }
@@ -1158,7 +1163,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_local_stack_management() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Test that local variables are accessed from correct stack positions
@@ -1201,88 +1206,88 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_if_statement_true() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("if (true) print \"executed\";");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_if_statement_false() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("if (false) print \"not executed\";");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_if_else_statement() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("if (false) print \"if\"; else print \"else\";");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_if_with_expression() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("if (5 > 3) print \"greater\";");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_nested_if_statements() {
-        let mut vm = VM::init_vm();
-        let result = vm.interpret("if (true) { if (false) print \"inner\"; else print \"nested\"; }");
+        let mut vm = VM::init_vm(None);
+        let result =
+            vm.interpret("if (true) { if (false) print \"inner\"; else print \"nested\"; }");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_while_loop() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("var i = 3; while (i > 0) { print i; i = i - 1; }");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_while_loop_false_condition() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("var i = 0; while (i > 5) { print \"never\"; i = i + 1; }");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_for_loop() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("for (var i = 1; i <= 3; i = i + 1) print i;");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_for_loop_no_initializer() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("var j = 5; for (; j < 8; j = j + 1) print j;");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_nested_loops() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret(
-            "for (var i = 1; i < 3; i = i + 1) { for (var j = 1; j < 3; j = j + 1) print i + j; }"
+            "for (var i = 1; i < 3; i = i + 1) { for (var j = 1; j < 3; j = j + 1) print i + j; }",
         );
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_control_flow_with_variables() {
-        let mut vm = VM::init_vm();
-        let result = vm.interpret(
-            "var x = 10; if (x > 5) { while (x > 7) { x = x - 1; } } print x;"
-        );
+        let mut vm = VM::init_vm(None);
+        let result =
+            vm.interpret("var x = 10; if (x > 5) { while (x > 7) { x = x - 1; } } print x;");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_complex_control_flow() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret(
             "var result = 0; for (var i = 1; i <= 5; i = i + 1) { if (i > 3) result = result + i; } print result;"
         );
@@ -1291,7 +1296,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_control_flow_stack_management() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         // This should not cause stack underflow errors
         let result = vm.interpret(
             "if (true) print \"a\"; while (false) print \"b\"; for (var i = 0; i < 1; i = i + 1) print \"c\";"
@@ -1301,30 +1306,30 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_if_statement_with_local_variables() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let result = vm.interpret("{ var x = 5; if (x == 5) print \"local\"; }");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_while_with_local_scope() {
-        let mut vm = VM::init_vm();
-        let result = vm.interpret("{ var count = 2; while (count > 0) { print count; count = count - 1; } }");
+        let mut vm = VM::init_vm(None);
+        let result = vm
+            .interpret("{ var count = 2; while (count > 0) { print count; count = count - 1; } }");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_for_with_nested_scopes() {
-        let mut vm = VM::init_vm();
-        let result = vm.interpret(
-            "for (var i = 1; i < 3; i = i + 1) { var temp = i * 2; print temp; }"
-        );
+        let mut vm = VM::init_vm(None);
+        let result =
+            vm.interpret("for (var i = 1; i < 3; i = i + 1) { var temp = i * 2; print temp; }");
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_control_flow_jump_instructions() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Test basic OP_JUMP_IF_FALSE execution
@@ -1332,9 +1337,9 @@ mod tests {
         chunk.write_chunk(OP_JUMP_IF_FALSE, 1);
         chunk.write_chunk(0x00, 1); // high byte of jump offset
         chunk.write_chunk(0x03, 1); // low byte of jump offset (skip next 3 bytes)
-        chunk.write_chunk(OP_TRUE, 1);  // This should be skipped
-        chunk.write_chunk(OP_TRUE, 1);  // This should be skipped
-        chunk.write_chunk(OP_TRUE, 1);  // This should be skipped
+        chunk.write_chunk(OP_TRUE, 1); // This should be skipped
+        chunk.write_chunk(OP_TRUE, 1); // This should be skipped
+        chunk.write_chunk(OP_TRUE, 1); // This should be skipped
         chunk.write_chunk(OP_RETURN, 1);
 
         let result = vm.interpret_chunk(&chunk);
@@ -1344,14 +1349,14 @@ mod tests {
 
     #[test]
     fn test_vm_control_flow_jump_no_jump() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
         let mut chunk = Chunk::init_chunk();
 
         // Test OP_JUMP_IF_FALSE with true condition (should not jump)
         chunk.write_chunk(OP_TRUE, 1);
         chunk.write_chunk(OP_JUMP_IF_FALSE, 1);
         chunk.write_chunk(0x00, 1); // high byte of jump offset
-        chunk.write_chunk(0x03, 1); // low byte of jump offset 
+        chunk.write_chunk(0x03, 1); // low byte of jump offset
         chunk.write_chunk(OP_FALSE, 1); // This should execute
         chunk.write_chunk(OP_RETURN, 1);
 
@@ -1362,19 +1367,19 @@ mod tests {
 
     #[test]
     fn test_vm_control_flow_bytecode_operations() {
-        let mut vm = VM::init_vm();
-        
+        let mut vm = VM::init_vm(None);
+
         // Test that the jump instructions work correctly through high-level interpretation
         // This avoids manual bytecode construction which can be error-prone with offsets
-        
+
         // Test basic if statement execution
         let result = vm.interpret("if (false) print \"should not execute\";");
         assert!(matches!(result, InterpretResult::InterpretOk));
-        
+
         // Test basic loop that should not execute
         let result2 = vm.interpret("var x = 0; while (x > 5) print \"should not loop\";");
         assert!(matches!(result2, InterpretResult::InterpretOk));
-        
+
         // Test for loop with controlled execution
         let result3 = vm.interpret("for (var i = 0; i < 1; i = i + 1) print \"executed once\";");
         assert!(matches!(result3, InterpretResult::InterpretOk));
@@ -1384,7 +1389,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_function_declaration_and_call() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         let result = vm.interpret("fun hello() { print \"Hello, World!\"; } hello();");
         assert!(matches!(result, InterpretResult::InterpretOk));
@@ -1392,7 +1397,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_function_with_return() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         let result = vm.interpret("fun answer() { return 42; } print answer();");
         assert!(matches!(result, InterpretResult::InterpretOk));
@@ -1400,7 +1405,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_function_return_assignment() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         let result = vm.interpret("fun get_value() { return 123; } var x = get_value(); print x;");
         assert!(matches!(result, InterpretResult::InterpretOk));
@@ -1408,7 +1413,7 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_function_call_in_expression() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         let result = vm.interpret("fun five() { return 5; } print five() + 3;");
         assert!(matches!(result, InterpretResult::InterpretOk));
@@ -1416,17 +1421,17 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_multiple_functions() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         let result = vm.interpret(
-            "fun func1() { return 10; } fun func2() { return 20; } print func1() + func2();"
+            "fun func1() { return 10; } fun func2() { return 20; } print func1() + func2();",
         );
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 
     #[test]
     fn test_vm_interpret_function_call_stack_management() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         // Test that function calls properly manage the call stack
         let result = vm.interpret("fun a() { return 1; } fun b() { return a() + 2; } print b();");
@@ -1435,10 +1440,11 @@ mod tests {
 
     #[test]
     fn test_vm_interpret_recursive_function() {
-        let mut vm = VM::init_vm();
+        let mut vm = VM::init_vm(None);
 
         // Test recursive function with countdown using global variable
-        let result = vm.interpret("
+        let result = vm.interpret(
+            "
             var counter = 3;
             fun countdown() {
                 if (counter > 0) {
@@ -1450,7 +1456,8 @@ mod tests {
                 }
             }
             countdown();
-        ");
+        ",
+        );
         assert!(matches!(result, InterpretResult::InterpretOk));
     }
 }

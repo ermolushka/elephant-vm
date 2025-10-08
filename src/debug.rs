@@ -82,7 +82,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
 pub fn jump_instruction(name: &str, sign: i32, chunk: &Chunk, offset: usize) -> usize {
     // Read 16-bit jump value (big-endian format)
     let jump = ((chunk.code[offset + 1] as u16) << 8) | (chunk.code[offset + 2] as u16);
-    
+
     // Calculate destination: offset + 3 + sign * jump
     // Use checked arithmetic to prevent overflow/underflow
     let base_offset = offset + 3;
@@ -99,10 +99,10 @@ pub fn jump_instruction(name: &str, sign: i32, chunk: &Chunk, offset: usize) -> 
             0
         }
     };
-    
+
     // Print formatted output
     println!("{:16} {:4} -> {}", name, offset, destination);
-    
+
     // Return new offset (offset + 3)
     offset + 3
 }
@@ -482,10 +482,7 @@ mod tests {
         let mut chunk = Chunk::init_chunk();
 
         // Test local opcodes specifically
-        let opcodes = vec![
-            OpCode::OpGetLocal,
-            OpCode::OpSetLocal,
-        ];
+        let opcodes = vec![OpCode::OpGetLocal, OpCode::OpSetLocal];
 
         for (i, opcode) in opcodes.iter().enumerate() {
             let line = i as u32 + 1;
@@ -530,12 +527,12 @@ mod tests {
     #[test]
     fn test_jump_instruction() {
         let mut chunk = Chunk::init_chunk();
-        
+
         // Create a jump instruction with jump value 0x1234 (4660 in decimal)
         chunk.write_chunk(OP_JUMP, 10);
         chunk.write_chunk(0x12, 10); // high byte
         chunk.write_chunk(0x34, 10); // low byte
-        
+
         let offset = jump_instruction("OP_JUMP", 1, &chunk, 0);
         assert_eq!(offset, 3); // should advance by 3 bytes
     }
@@ -543,12 +540,12 @@ mod tests {
     #[test]
     fn test_jump_instruction_negative_sign() {
         let mut chunk = Chunk::init_chunk();
-        
+
         // Create a jump instruction with jump value 0x0001
         chunk.write_chunk(OP_JUMP_IF_FALSE, 5);
         chunk.write_chunk(0x00, 5); // high byte
         chunk.write_chunk(0x01, 5); // low byte
-        
+
         let offset = jump_instruction("OP_JUMP_IF_FALSE", -1, &chunk, 0);
         assert_eq!(offset, 3); // should advance by 3 bytes
     }
@@ -556,12 +553,12 @@ mod tests {
     #[test]
     fn test_jump_instruction_zero_jump() {
         let mut chunk = Chunk::init_chunk();
-        
+
         // Create a jump instruction with jump value 0x0000
         chunk.write_chunk(OP_JUMP, 1);
         chunk.write_chunk(0x00, 1); // high byte
         chunk.write_chunk(0x00, 1); // low byte
-        
+
         let offset = jump_instruction("OP_JUMP", 1, &chunk, 0);
         assert_eq!(offset, 3); // should advance by 3 bytes
     }
@@ -569,12 +566,12 @@ mod tests {
     #[test]
     fn test_jump_instruction_max_jump() {
         let mut chunk = Chunk::init_chunk();
-        
+
         // Create a jump instruction with maximum jump value 0xFFFF
         chunk.write_chunk(OP_JUMP, 1);
         chunk.write_chunk(0xFF, 1); // high byte
         chunk.write_chunk(0xFF, 1); // low byte
-        
+
         let offset = jump_instruction("OP_JUMP", 1, &chunk, 0);
         assert_eq!(offset, 3); // should advance by 3 bytes
     }
@@ -582,12 +579,12 @@ mod tests {
     #[test]
     fn test_disassemble_instruction_jump() {
         let mut chunk = Chunk::init_chunk();
-        
+
         // Create a jump instruction
         chunk.write_chunk(OP_JUMP, 10);
         chunk.write_chunk(0x12, 10);
         chunk.write_chunk(0x34, 10);
-        
+
         let new_offset = disassemble_instruction(&chunk, 0);
         assert_eq!(new_offset, 3); // jump instruction should advance by 3
     }
@@ -595,12 +592,12 @@ mod tests {
     #[test]
     fn test_disassemble_instruction_jump_if_false() {
         let mut chunk = Chunk::init_chunk();
-        
+
         // Create a jump if false instruction
         chunk.write_chunk(OP_JUMP_IF_FALSE, 15);
         chunk.write_chunk(0x00, 15);
         chunk.write_chunk(0x05, 15);
-        
+
         let new_offset = disassemble_instruction(&chunk, 0);
         assert_eq!(new_offset, 3); // jump instruction should advance by 3
     }

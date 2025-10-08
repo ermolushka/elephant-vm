@@ -380,10 +380,14 @@ pub struct Compiler<'a> {
     pub locals: Vec<Local>,
     pub local_count: usize,
     pub scope_depth: i32,
+    pub debug: bool,
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(string_table: &'a mut std::collections::HashMap<String, Value>) -> Self {
+    pub fn new(
+        string_table: &'a mut std::collections::HashMap<String, Value>,
+        debug: bool,
+    ) -> Self {
         Self {
             scanner: Scanner::new(""), // temporary empty string, will be set in compile
             parser: Parser {
@@ -407,6 +411,7 @@ impl<'a> Compiler<'a> {
             locals: Vec::new(),
             local_count: 0,
             scope_depth: 0,
+            debug,
         }
     }
 
@@ -500,11 +505,12 @@ impl<'a> Compiler<'a> {
         self.emit_return();
 
         // Create function object - get the actual function name from the source
-        let name_str = &self.scanner.source[function_name.start..function_name.start + function_name.length];
+        let name_str =
+            &self.scanner.source[function_name.start..function_name.start + function_name.length];
         let function = Value::new_function(
             0, // arity - no parameters for now
             self.parser.chunk.clone(),
-            name_str.to_string()
+            name_str.to_string(),
         );
 
         // Restore the enclosing chunk and parser state
@@ -688,7 +694,10 @@ impl<'a> Compiler<'a> {
             self.var_declaration();
         } else {
             self.expression();
-            self.consume(TokenType::Semicolon, "Expect ';' after for loop initializer.");
+            self.consume(
+                TokenType::Semicolon,
+                "Expect ';' after for loop initializer.",
+            );
         }
         let mut loop_start = self.parser.chunk.code.len();
         let mut exit_jump = 0;
@@ -783,7 +792,6 @@ impl<'a> Compiler<'a> {
         self.consume(TokenType::RightParen, "Expect ')' after arguments.");
         arg_count
     }
-    
 
     pub fn block(&mut self) {
         while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
@@ -901,7 +909,7 @@ impl<'a> Compiler<'a> {
 
     pub fn end_compiler(&mut self) {
         self.emit_return();
-        if !self.parser.had_error {
+        if !self.parser.had_error && self.debug {
             disassemble_chunk(&self.parser.chunk, "code");
         }
     }
@@ -918,9 +926,7 @@ impl<'a> Compiler<'a> {
     pub fn emit_loop(&mut self, loop_start: usize) {
         self.emit_byte(OpCode::OpLoop as u8);
         let offset = self.parser.chunk.code.len() - loop_start + 2;
-        self.emit_bytes(
-            (offset >> 8) as u8,
-            offset as u8);
+        self.emit_bytes((offset >> 8) as u8, offset as u8);
     }
 
     pub fn emit_constant(&mut self, value: Value) {
@@ -1100,7 +1106,7 @@ mod tests {
     #[test]
     fn test_compiler_new() {
         let mut string_table = HashMap::new();
-        let compiler = Compiler::new(&mut string_table);
+        let compiler = Compiler::new(&mut string_table, false);
 
         assert_eq!(compiler.scanner.source, "");
         assert_eq!(compiler.scanner.start, 0);
@@ -1111,7 +1117,7 @@ mod tests {
     #[test]
     fn test_compiler_compile_empty_source() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic and should complete successfully
@@ -1121,7 +1127,7 @@ mod tests {
     #[test]
     fn test_compiler_compile_simple_expression() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic and should complete successfully
@@ -1131,7 +1137,7 @@ mod tests {
     #[test]
     fn test_compiler_compile_with_comments() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic and should complete successfully
@@ -1141,7 +1147,7 @@ mod tests {
     #[test]
     fn test_compiler_compile_complex_expression() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic and should complete successfully
@@ -1151,7 +1157,7 @@ mod tests {
     #[test]
     fn test_compiler_compile_with_error_tokens() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // This should not panic even with invalid characters
@@ -1161,7 +1167,7 @@ mod tests {
     #[test]
     fn test_compiler_compile_multiline() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let source = "1 + 2\n3 * 4\n// comment\n5 - 6";
@@ -1173,7 +1179,7 @@ mod tests {
     #[test]
     fn test_compiler_scanner_initialization() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
         let source = "test source";
 
@@ -1186,7 +1192,7 @@ mod tests {
     #[test]
     fn test_compiler_number_parsing() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.scanner.init_scanner("42.5");
         compiler.advance(); // consume EOF, move to number token (now in current)
         compiler.advance(); // move number token to previous
@@ -1218,7 +1224,7 @@ mod tests {
     #[test]
     fn test_compiler_number_parsing_integer() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.scanner.init_scanner("123");
         compiler.advance(); // consume EOF, move to number token (now in current)
         compiler.advance(); // move number token to previous
@@ -1240,7 +1246,7 @@ mod tests {
     #[test]
     fn test_compiler_number_parsing_invalid() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.scanner.init_scanner("abc");
         compiler.advance(); // This won't be a number token, but let's test the method
 
@@ -1269,7 +1275,7 @@ mod tests {
     #[test]
     fn test_compiler_unary_negation() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "-5"
@@ -1288,7 +1294,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_addition() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "1 + 2"
@@ -1310,7 +1316,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_subtraction() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "5 - 3"
@@ -1327,7 +1333,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_multiplication() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "3 * 4"
@@ -1344,7 +1350,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_division() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "8 / 2"
@@ -1361,7 +1367,7 @@ mod tests {
     #[test]
     fn test_compiler_grouping() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "(42)"
@@ -1379,7 +1385,7 @@ mod tests {
     #[test]
     fn test_compiler_precedence_order() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "1 + 2 * 3" - should be 1 + (2 * 3) = 7, not (1 + 2) * 3 = 9
@@ -1402,7 +1408,7 @@ mod tests {
     #[test]
     fn test_compiler_complex_expression() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "(1 + 2) * 3"
@@ -1422,7 +1428,7 @@ mod tests {
     #[test]
     fn test_compiler_get_rule() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
 
         // Test known rules
         let plus_rule = compiler.get_rule(TokenType::Plus);
@@ -1449,7 +1455,7 @@ mod tests {
     #[test]
     fn test_compiler_get_next_precedence() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
 
         assert_eq!(
             compiler.get_next_precedence(Precedence::PrecNone),
@@ -1476,7 +1482,7 @@ mod tests {
     #[test]
     fn test_compiler_error_handling() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test invalid expression
@@ -1488,7 +1494,7 @@ mod tests {
     #[test]
     fn test_compiler_error_recovery() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
 
         // Test error_at method
         let token = Token {
@@ -1514,7 +1520,7 @@ mod tests {
     #[test]
     fn test_compiler_advance() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.scanner.init_scanner("123 + 456");
 
         // Initial state
@@ -1534,7 +1540,7 @@ mod tests {
     #[test]
     fn test_compiler_consume_success() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.scanner.init_scanner("+");
         compiler.advance(); // Get the plus token
 
@@ -1546,7 +1552,7 @@ mod tests {
     #[test]
     fn test_compiler_make_constant() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.parser.chunk = Chunk::init_chunk();
 
         let index1 = compiler.make_constant(Value::new_number(42.0));
@@ -1567,7 +1573,7 @@ mod tests {
     #[test]
     fn test_compiler_emit_byte() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.parser.chunk = Chunk::init_chunk();
         compiler.parser.previous = Token {
             token_type: TokenType::Plus,
@@ -1587,7 +1593,7 @@ mod tests {
     #[test]
     fn test_compiler_emit_bytes() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.parser.chunk = Chunk::init_chunk();
         compiler.parser.previous = Token {
             token_type: TokenType::Number,
@@ -1610,7 +1616,7 @@ mod tests {
     #[test]
     fn test_compiler_emit_constant() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         compiler.parser.chunk = Chunk::init_chunk();
         compiler.parser.previous = Token {
             token_type: TokenType::Number,
@@ -1637,7 +1643,7 @@ mod tests {
     #[test]
     fn test_compiler_nested_grouping() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test "((1))"
@@ -1653,7 +1659,7 @@ mod tests {
     #[test]
     fn test_compiler_floating_point_precision() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // Test precise floating point number
@@ -1671,7 +1677,7 @@ mod tests {
     #[test]
     fn test_compiler_literal_true() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("true", &mut chunk);
@@ -1687,7 +1693,7 @@ mod tests {
     #[test]
     fn test_compiler_literal_false() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("false", &mut chunk);
@@ -1703,7 +1709,7 @@ mod tests {
     #[test]
     fn test_compiler_literal_nil() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("nil", &mut chunk);
@@ -1719,7 +1725,7 @@ mod tests {
     #[test]
     fn test_compiler_unary_not_true() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("!true", &mut chunk);
@@ -1735,7 +1741,7 @@ mod tests {
     #[test]
     fn test_compiler_unary_not_false() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("!false", &mut chunk);
@@ -1751,7 +1757,7 @@ mod tests {
     #[test]
     fn test_compiler_unary_not_nil() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("!nil", &mut chunk);
@@ -1769,7 +1775,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_equal() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("5 == 5", &mut chunk);
@@ -1785,7 +1791,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_not_equal() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("5 != 3", &mut chunk);
@@ -1802,7 +1808,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_greater() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("7 > 3", &mut chunk);
@@ -1818,7 +1824,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_greater_equal() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("7 >= 3", &mut chunk);
@@ -1835,7 +1841,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_less() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("3 < 7", &mut chunk);
@@ -1851,7 +1857,7 @@ mod tests {
     #[test]
     fn test_compiler_binary_less_equal() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("3 <= 7", &mut chunk);
@@ -1868,7 +1874,7 @@ mod tests {
     #[test]
     fn test_compiler_mixed_boolean_and_number_comparison() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("true == true", &mut chunk);
@@ -1886,7 +1892,7 @@ mod tests {
     #[test]
     fn test_compiler_complex_comparison_expression() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("!(5 > 3)", &mut chunk);
@@ -1902,7 +1908,7 @@ mod tests {
     #[test]
     fn test_compiler_chained_comparisons() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("5 > 3 == true", &mut chunk);
@@ -1919,7 +1925,7 @@ mod tests {
     #[test]
     fn test_compiler_precedence_comparison_vs_arithmetic() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("2 + 3 > 4", &mut chunk);
@@ -1936,7 +1942,7 @@ mod tests {
     #[test]
     fn test_compiler_global_variable_declaration() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("var x = 42;", &mut chunk);
@@ -1952,7 +1958,7 @@ mod tests {
     #[test]
     fn test_compiler_local_variable_access() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("{ var x = 42; x; }", &mut chunk);
@@ -1971,23 +1977,38 @@ mod tests {
     #[test]
     fn test_compiler_nested_scopes() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile("{
+        let result = compiler.compile(
+            "{
             var a = 1;
             {
                 var b = 2;
                 a;
                 b;
             }
-        }", &mut chunk);
+        }",
+            &mut chunk,
+        );
         assert!(result);
 
         // Should contain multiple local operations and pops for scope cleanup
-        let set_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpSetLocal as u8).count();
-        let get_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpGetLocal as u8).count();
-        let pop_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPop as u8).count();
+        let set_local_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpSetLocal as u8)
+            .count();
+        let get_local_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpGetLocal as u8)
+            .count();
+        let pop_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpPop as u8)
+            .count();
 
         assert_eq!(set_local_count, 0); // Variable declarations don't use SET_LOCAL
         assert!(get_local_count >= 2); // At least 2 variables accessed
@@ -1997,37 +2018,49 @@ mod tests {
     #[test]
     fn test_compiler_variable_shadowing() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile("{
+        let result = compiler.compile(
+            "{
             var a = \"outer\";
             {
                 var a = \"inner\";
                 a;
             }
             a;
-        }", &mut chunk);
+        }",
+            &mut chunk,
+        );
         assert!(result);
 
         // Should have constants for both "outer" and "inner" strings
         assert!(chunk.constants.values.len() >= 2);
-        assert!(chunk.constants.values.contains(&Value::new_string("outer".to_string())));
-        assert!(chunk.constants.values.contains(&Value::new_string("inner".to_string())));
+        assert!(chunk
+            .constants
+            .values
+            .contains(&Value::new_string("outer".to_string())));
+        assert!(chunk
+            .constants
+            .values
+            .contains(&Value::new_string("inner".to_string())));
     }
 
     #[test]
     fn test_compiler_global_vs_local_variables() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile("var global = \"global\";
+        let result = compiler.compile(
+            "var global = \"global\";
         {
             var local = \"local\";
             global;
             local;
-        }", &mut chunk);
+        }",
+            &mut chunk,
+        );
         assert!(result);
 
         // Should have both global and local operations
@@ -2041,19 +2074,25 @@ mod tests {
     #[test]
     fn test_compiler_local_variable_assignment() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("{ var x = 1; x = 2; x; }", &mut chunk);
         assert!(result);
 
         // Should have SET_LOCAL followed by GET_LOCAL
-        let set_local_indices: Vec<usize> = chunk.code.iter().enumerate()
+        let set_local_indices: Vec<usize> = chunk
+            .code
+            .iter()
+            .enumerate()
             .filter(|&(_, &x)| x == OpCode::OpSetLocal as u8)
             .map(|(i, _)| i)
             .collect();
 
-        let get_local_indices: Vec<usize> = chunk.code.iter().enumerate()
+        let get_local_indices: Vec<usize> = chunk
+            .code
+            .iter()
+            .enumerate()
             .filter(|&(_, &x)| x == OpCode::OpGetLocal as u8)
             .map(|(i, _)| i)
             .collect();
@@ -2061,20 +2100,30 @@ mod tests {
         assert!(!set_local_indices.is_empty());
         assert!(!get_local_indices.is_empty());
         // GET_LOCAL should come after SET_LOCAL
-        assert!(get_local_indices.iter().any(|&gi| set_local_indices.iter().any(|&si| gi > si)));
+        assert!(get_local_indices
+            .iter()
+            .any(|&gi| set_local_indices.iter().any(|&si| gi > si)));
     }
 
     #[test]
     fn test_compiler_multiple_local_variables() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("{ var a = 1; var b = 2; var c = 3; a; b; c; }", &mut chunk);
         assert!(result);
 
-        let set_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpSetLocal as u8).count();
-        let get_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpGetLocal as u8).count();
+        let set_local_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpSetLocal as u8)
+            .count();
+        let get_local_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpGetLocal as u8)
+            .count();
 
         assert_eq!(set_local_count, 0); // Variable declarations don't use SET_LOCAL
         assert_eq!(get_local_count, 3); // Three variables accessed
@@ -2083,7 +2132,7 @@ mod tests {
     #[test]
     fn test_compiler_local_variable_scope_cleanup() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("{ var x = 1; }", &mut chunk);
@@ -2094,17 +2143,18 @@ mod tests {
         assert!(len >= 4); // At least CONSTANT, SET_LOCAL, POP, RETURN
 
         // Last two opcodes should be POP and RETURN
-        assert_eq!(chunk.code[len-2], OpCode::OpPop as u8);
-        assert_eq!(chunk.code[len-1], OpCode::OpReturn as u8);
+        assert_eq!(chunk.code[len - 2], OpCode::OpPop as u8);
+        assert_eq!(chunk.code[len - 1], OpCode::OpReturn as u8);
     }
 
     #[test]
     fn test_compiler_deeply_nested_scopes() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile("{
+        let result = compiler.compile(
+            "{
             var a = 1;
             {
                 var b = 2;
@@ -2116,12 +2166,26 @@ mod tests {
                     }
                 }
             }
-        }", &mut chunk);
+        }",
+            &mut chunk,
+        );
         assert!(result);
 
-        let set_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpSetLocal as u8).count();
-        let get_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpGetLocal as u8).count();
-        let pop_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPop as u8).count();
+        let set_local_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpSetLocal as u8)
+            .count();
+        let get_local_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpGetLocal as u8)
+            .count();
+        let pop_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpPop as u8)
+            .count();
 
         assert_eq!(set_local_count, 0); // Variable declarations don't use SET_LOCAL
         assert_eq!(get_local_count, 4); // Four variables accessed
@@ -2131,7 +2195,7 @@ mod tests {
     #[test]
     fn test_compiler_local_variable_in_expression() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("{ var x = 5; var y = x + 3; y; }", &mut chunk);
@@ -2139,8 +2203,16 @@ mod tests {
 
         // Should contain arithmetic operations with local variables
         assert!(chunk.code.contains(&(OpCode::OpAdd as u8)));
-        let set_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpSetLocal as u8).count();
-        let get_local_count = chunk.code.iter().filter(|&&x| x == OpCode::OpGetLocal as u8).count();
+        let set_local_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpSetLocal as u8)
+            .count();
+        let get_local_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpGetLocal as u8)
+            .count();
 
         // Variable declarations don't use SET_LOCAL, only assignments do
         assert_eq!(set_local_count, 0); // No assignments, only declarations
@@ -2152,7 +2224,7 @@ mod tests {
     #[test]
     fn test_compiler_if_statement_basic() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("if (true) print \"yes\";", &mut chunk);
@@ -2167,7 +2239,7 @@ mod tests {
     #[test]
     fn test_compiler_if_else_statement() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("if (false) print \"no\"; else print \"yes\";", &mut chunk);
@@ -2176,19 +2248,26 @@ mod tests {
         // Should contain both conditional and unconditional jumps
         assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
         assert!(chunk.code.contains(&(OpCode::OpJump as u8)));
-        
+
         // Should have two print statements
-        let print_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPrint as u8).count();
+        let print_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpPrint as u8)
+            .count();
         assert_eq!(print_count, 2);
     }
 
     #[test]
     fn test_compiler_if_else_with_block() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile("if (true) { print \"block\"; } else { print \"else\"; }", &mut chunk);
+        let result = compiler.compile(
+            "if (true) { print \"block\"; } else { print \"else\"; }",
+            &mut chunk,
+        );
         assert!(result);
 
         assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
@@ -2199,26 +2278,29 @@ mod tests {
     #[test]
     fn test_compiler_while_statement() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile("var i = 0; while (i < 3) { print i; i = i + 1; }", &mut chunk);
+        let result = compiler.compile(
+            "var i = 0; while (i < 3) { print i; i = i + 1; }",
+            &mut chunk,
+        );
         assert!(result);
 
         // Should contain loop-related instructions
         assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
         assert!(chunk.code.contains(&(OpCode::OpLoop as u8)));
         assert!(chunk.code.contains(&(OpCode::OpPrint as u8)));
-        
+
         // Should have variable operations
         assert!(chunk.code.contains(&(OpCode::OpSetGlobal as u8)));
         assert!(chunk.code.contains(&(OpCode::OpGetGlobal as u8)));
     }
 
-    #[test] 
+    #[test]
     fn test_compiler_for_statement() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("for (var i = 0; i < 3; i = i + 1) print i;", &mut chunk);
@@ -2228,7 +2310,7 @@ mod tests {
         assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
         assert!(chunk.code.contains(&(OpCode::OpJump as u8)));
         assert!(chunk.code.contains(&(OpCode::OpLoop as u8)));
-        
+
         // Should have local variable operations for loop variable
         assert!(chunk.code.contains(&(OpCode::OpGetLocal as u8)));
         assert!(chunk.code.contains(&(OpCode::OpSetLocal as u8)));
@@ -2237,7 +2319,7 @@ mod tests {
     #[test]
     fn test_compiler_for_statement_no_initializer() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("var j = 5; for (; j < 8; j = j + 1) print j;", &mut chunk);
@@ -2251,19 +2333,27 @@ mod tests {
     #[test]
     fn test_compiler_nested_if_statements() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile(
-            "if (true) { if (false) print \"inner\"; else print \"else\"; }", 
-            &mut chunk
+            "if (true) { if (false) print \"inner\"; else print \"else\"; }",
+            &mut chunk,
         );
         assert!(result);
 
         // Should have multiple conditional jumps for nested structure
-        let jump_if_false_count = chunk.code.iter().filter(|&&x| x == OpCode::OpJumpIfFalse as u8).count();
-        let jump_count = chunk.code.iter().filter(|&&x| x == OpCode::OpJump as u8).count();
-        
+        let jump_if_false_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpJumpIfFalse as u8)
+            .count();
+        let jump_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpJump as u8)
+            .count();
+
         assert!(jump_if_false_count >= 2); // At least 2 for nested if statements
         assert!(jump_count >= 2); // At least 2 for else jumps
     }
@@ -2271,19 +2361,27 @@ mod tests {
     #[test]
     fn test_compiler_nested_loops() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile(
             "for (var i = 0; i < 2; i = i + 1) { for (var j = 0; j < 2; j = j + 1) print i; }",
-            &mut chunk
+            &mut chunk,
         );
         assert!(result);
 
         // Should have nested loop control structures
-        let loop_count = chunk.code.iter().filter(|&&x| x == OpCode::OpLoop as u8).count();
-        let jump_if_false_count = chunk.code.iter().filter(|&&x| x == OpCode::OpJumpIfFalse as u8).count();
-        
+        let loop_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpLoop as u8)
+            .count();
+        let jump_if_false_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpJumpIfFalse as u8)
+            .count();
+
         assert!(loop_count >= 2); // At least 2 for nested loops
         assert!(jump_if_false_count >= 2); // At least 2 for loop conditions
     }
@@ -2291,7 +2389,7 @@ mod tests {
     #[test]
     fn test_compiler_if_condition_evaluation() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("if (5 > 3) print \"true\";", &mut chunk);
@@ -2300,7 +2398,7 @@ mod tests {
         // Should contain comparison operation before conditional jump
         assert!(chunk.code.contains(&(OpCode::OpGreater as u8)));
         assert!(chunk.code.contains(&(OpCode::OpJumpIfFalse as u8)));
-        
+
         // Should have constants for the comparison
         assert!(chunk.constants.values.len() >= 2);
     }
@@ -2308,7 +2406,7 @@ mod tests {
     #[test]
     fn test_compiler_while_condition_evaluation() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile("var x = 5; while (x > 0) { x = x - 1; }", &mut chunk);
@@ -2324,11 +2422,14 @@ mod tests {
     #[test]
     fn test_compiler_control_flow_stack_management() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         // This should compile without extra OP_POP instructions
-        let result = compiler.compile("if (true) print \"test\"; while (false) print \"never\";", &mut chunk);
+        let result = compiler.compile(
+            "if (true) print \"test\"; while (false) print \"never\";",
+            &mut chunk,
+        );
         assert!(result);
 
         // Verify no stack management issues by checking the bytecode compiles successfully
@@ -2339,7 +2440,7 @@ mod tests {
     #[test]
     fn test_compiler_complex_control_flow() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile(
@@ -2355,7 +2456,11 @@ mod tests {
         assert!(chunk.code.contains(&(OpCode::OpEqual as u8)));
 
         // Should have multiple print statements
-        let print_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPrint as u8).count();
+        let print_count = chunk
+            .code
+            .iter()
+            .filter(|&&x| x == OpCode::OpPrint as u8)
+            .count();
         assert!(print_count >= 2);
     }
 
@@ -2364,13 +2469,10 @@ mod tests {
     #[test]
     fn test_compiler_function_declaration() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile(
-            "fun test() { print \"hello\"; }",
-            &mut chunk
-        );
+        let result = compiler.compile("fun test() { print \"hello\"; }", &mut chunk);
         assert!(result);
 
         // Should contain function definition and global definition
@@ -2379,7 +2481,10 @@ mod tests {
         assert!(chunk.code.contains(&(OpCode::OpReturn as u8)));
 
         // Should have function constant in constants array
-        let function_constant = chunk.constants.values.iter()
+        let function_constant = chunk
+            .constants
+            .values
+            .iter()
             .find(|v| v.is_function())
             .expect("Should contain a function constant");
         assert!(function_constant.is_function());
@@ -2396,13 +2501,10 @@ mod tests {
     #[test]
     fn test_compiler_function_call() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile(
-            "fun test() { return 42; } test();",
-            &mut chunk
-        );
+        let result = compiler.compile("fun test() { return 42; } test();", &mut chunk);
         assert!(result);
 
         // Should contain function definition, global get, and call
@@ -2416,12 +2518,12 @@ mod tests {
     #[test]
     fn test_compiler_function_with_return() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile(
             "fun answer() { return 42; } var result = answer();",
-            &mut chunk
+            &mut chunk,
         );
         assert!(result);
 
@@ -2436,19 +2538,22 @@ mod tests {
     #[test]
     fn test_compiler_function_call_expression() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
-        let result = compiler.compile(
-            "fun add() { return 5; } print add();",
-            &mut chunk
-        );
+        let result = compiler.compile("fun add() { return 5; } print add();", &mut chunk);
         assert!(result);
 
         // Should contain function call followed by print
-        let call_pos = chunk.code.iter().position(|&x| x == OpCode::OpCall as u8)
+        let call_pos = chunk
+            .code
+            .iter()
+            .position(|&x| x == OpCode::OpCall as u8)
             .expect("Should contain function call");
-        let print_pos = chunk.code.iter().position(|&x| x == OpCode::OpPrint as u8)
+        let print_pos = chunk
+            .code
+            .iter()
+            .position(|&x| x == OpCode::OpPrint as u8)
             .expect("Should contain print");
 
         assert!(call_pos < print_pos, "Call should come before print");
@@ -2457,23 +2562,28 @@ mod tests {
     #[test]
     fn test_compiler_multiple_functions() {
         let mut string_table = HashMap::new();
-        let mut compiler = Compiler::new(&mut string_table);
+        let mut compiler = Compiler::new(&mut string_table, false);
         let mut chunk = Chunk::init_chunk();
 
         let result = compiler.compile(
             "fun func1() { return 1; } fun func2() { return 2; } func1(); func2();",
-            &mut chunk
+            &mut chunk,
         );
         assert!(result);
 
         // Should contain multiple function constants
-        let function_count = chunk.constants.values.iter()
+        let function_count = chunk
+            .constants
+            .values
+            .iter()
             .filter(|v| v.is_function())
             .count();
         assert_eq!(function_count, 2, "Should have two function constants");
 
         // Should contain multiple calls
-        let call_count = chunk.code.iter()
+        let call_count = chunk
+            .code
+            .iter()
             .filter(|&&x| x == OpCode::OpCall as u8)
             .count();
         assert_eq!(call_count, 2, "Should have two function calls");

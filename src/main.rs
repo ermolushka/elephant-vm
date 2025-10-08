@@ -9,15 +9,26 @@ mod scanner;
 mod value;
 mod vm;
 fn main() {
+    // reading --debug flag
+    let args: Vec<String> = args().collect();
+    let debug = args.contains(&"--debug".to_string());
+
+    // Filter out the --debug flag to get the actual arguments
+    let filtered_args: Vec<String> = args
+        .iter()
+        .filter(|&arg| arg != "--debug")
+        .cloned()
+        .collect();
+
     // init vm
-    let mut vm: VM = VM::init_vm();
-    if args().len() == 1 {
+    let mut vm: VM = VM::init_vm(Some(debug));
+    if filtered_args.len() == 1 {
         repl(&mut vm);
-    } else if args().len() == 2 {
-        let file_path = args().nth(1).unwrap();
+    } else if filtered_args.len() == 2 {
+        let file_path = filtered_args[1].clone();
         let _ = run_file(&mut vm, &file_path);
     } else {
-        println!("Usage: elephant-vm [script]");
+        println!("Usage: elephant-vm [--debug] [script]");
         exit(64);
     }
 
