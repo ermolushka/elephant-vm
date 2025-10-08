@@ -2,10 +2,19 @@ use std::collections::HashMap;
 
 use crate::{chunk::Chunk, compiler::Compiler, debug::*, value::Value};
 
+#[derive(Clone)]
+pub struct CallFrame {
+    pub function: Value,
+    pub ip: usize,
+    pub slots: usize, // index into VM stack where this frame's slots start
+    pub caller_chunk: crate::chunk::Chunk, // the chunk we were executing before this call
+}
+
 pub struct VM {
     pub chunk: Chunk,
     pub ip: usize, // instruction pointer
     pub stack: Vec<Value>,
+    pub frames: Vec<CallFrame>,
     pub strings: HashMap<String, Value>,
     pub globals: HashMap<String, Value>,
 }
@@ -22,6 +31,7 @@ impl VM {
             chunk: Chunk::init_chunk(),
             ip: 0,
             stack: Vec::new(),
+            frames: Vec::new(),
             strings: HashMap::new(),
             globals: HashMap::new(),
         }
@@ -42,6 +52,7 @@ impl VM {
     pub fn free_vm(&mut self) {
         self.chunk.free_chunk();
         self.reset_stack();
+        self.frames.clear();
         self.ip = 0;
     }
 
@@ -109,16 +120,28 @@ impl VM {
     }
 
     pub fn run(&mut self) -> InterpretResult {
-        println!("VM execution started");
         loop {
-            // temp stack tracing
-            println!("vm stack: {:?}", self.stack);
-            println!("vm strings: {:?}", self.strings);
             let instruction = self.read_byte();
             match instruction {
                 OP_RETURN => {
-                    println!("VM execution completed successfully");
-                    return InterpretResult::InterpretOk;
+                    // If we're in a function, return from the function
+                    if !self.frames.is_empty() {
+                        let result = self.pop();
+                        let frame = self.frames.pop().unwrap();
+
+                        // Pop all the function's local variables and parameters
+                        self.stack.truncate(frame.slots);
+
+                        // Push the return value back
+                        self.push(result);
+
+                        // Restore the caller's chunk and ip
+                        self.chunk = frame.caller_chunk;
+                        self.ip = frame.ip;
+                    } else {
+                        // Top-level return - execution is complete
+                        return InterpretResult::InterpretOk;
+                    }
                 }
                 OP_NEGATE => {
                     if !self.stack_top().is_number() {
@@ -139,8 +162,8 @@ impl VM {
                             value1.as_number().unwrap() + value2.as_number().unwrap(),
                         ));
                     } else {
-                        self.run_time_error("Operands must be two numbers or two strings");
-                        return InterpretResult::InterpretRuntimeError;
+                        // Handle mixed types with string concatenation
+                        self.push(value1.string_concat(&value2));
                     }
                 }
                 OP_SUBTRACT => {
@@ -178,7 +201,6 @@ impl VM {
                 }
                 OP_CONSTANT => {
                     let constant = self.read_constant();
-                    println!("vm constant {:?}", &constant);
                     self.push(constant);
                 }
                 OP_NIL => {
@@ -290,8 +312,50 @@ impl VM {
                     let offset = self.read_short();
                     self.ip -= offset as usize;
                 }
+                OP_CALL => {
+                    let arg_count = self.read_byte() as usize;
+                    if !self.call_value(self.peek(arg_count), arg_count) {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
                 _ => return InterpretResult::InterpretRuntimeError,
             }
+        }
+    }
+
+    pub fn call_value(&mut self, callee: Value, arg_count: usize) -> bool {
+        if callee.is_function() {
+            return self.call(callee, arg_count);
+        }
+        self.run_time_error("Can only call functions and classes.");
+        false
+    }
+
+    pub fn call(&mut self, function: Value, arg_count: usize) -> bool {
+        if let Some(func_obj) = function.as_function() {
+            if arg_count != func_obj.arity {
+                self.run_time_error(&format!(
+                    "Expected {} arguments but got {}.",
+                    func_obj.arity, arg_count
+                ));
+                return false;
+            }
+
+            // Create a new call frame - save the IP after the CALL instruction
+            self.frames.push(CallFrame {
+                function: function.clone(),
+                ip: self.ip, // IP is already at the correct return position
+                slots: self.stack.len() - arg_count - 1, // -1 for the function itself
+                caller_chunk: self.chunk.clone(), // Save the caller's chunk
+            });
+
+            // Switch to the function's chunk
+            self.chunk = func_obj.chunk.clone();
+            self.ip = 0;
+
+            true
+        } else {
+            false
         }
     }
 
@@ -1314,5 +1378,79 @@ mod tests {
         // Test for loop with controlled execution
         let result3 = vm.interpret("for (var i = 0; i < 1; i = i + 1) print \"executed once\";");
         assert!(matches!(result3, InterpretResult::InterpretOk));
+    }
+
+    // Function-related tests
+
+    #[test]
+    fn test_vm_interpret_function_declaration_and_call() {
+        let mut vm = VM::init_vm();
+
+        let result = vm.interpret("fun hello() { print \"Hello, World!\"; } hello();");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_function_with_return() {
+        let mut vm = VM::init_vm();
+
+        let result = vm.interpret("fun answer() { return 42; } print answer();");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_function_return_assignment() {
+        let mut vm = VM::init_vm();
+
+        let result = vm.interpret("fun get_value() { return 123; } var x = get_value(); print x;");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_function_call_in_expression() {
+        let mut vm = VM::init_vm();
+
+        let result = vm.interpret("fun five() { return 5; } print five() + 3;");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_multiple_functions() {
+        let mut vm = VM::init_vm();
+
+        let result = vm.interpret(
+            "fun func1() { return 10; } fun func2() { return 20; } print func1() + func2();"
+        );
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_function_call_stack_management() {
+        let mut vm = VM::init_vm();
+
+        // Test that function calls properly manage the call stack
+        let result = vm.interpret("fun a() { return 1; } fun b() { return a() + 2; } print b();");
+        assert!(matches!(result, InterpretResult::InterpretOk));
+    }
+
+    #[test]
+    fn test_vm_interpret_recursive_function() {
+        let mut vm = VM::init_vm();
+
+        // Test recursive function with countdown using global variable
+        let result = vm.interpret("
+            var counter = 3;
+            fun countdown() {
+                if (counter > 0) {
+                    print counter;
+                    counter = counter - 1;
+                    countdown();
+                } else {
+                    print \"Done!\";
+                }
+            }
+            countdown();
+        ");
+        assert!(matches!(result, InterpretResult::InterpretOk));
     }
 }

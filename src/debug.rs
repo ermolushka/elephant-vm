@@ -24,6 +24,7 @@ pub const OP_SET_LOCAL: u8 = OpCode::OpSetLocal as u8;
 pub const OP_JUMP_IF_FALSE: u8 = OpCode::OpJumpIfFalse as u8;
 pub const OP_JUMP: u8 = OpCode::OpJump as u8;
 pub const OP_LOOP: u8 = OpCode::OpLoop as u8;
+pub const OP_CALL: u8 = OpCode::OpCall as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -69,6 +70,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_JUMP_IF_FALSE => jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset),
         OP_JUMP => jump_instruction("OP_JUMP", 1, chunk, offset),
         OP_LOOP => jump_instruction("OP_LOOP", -1, chunk, offset),
+        OP_CALL => byte_instruction("OP_CALL", chunk, offset),
 
         _ => {
             println!("Unknown opcode: {}", instruction);
