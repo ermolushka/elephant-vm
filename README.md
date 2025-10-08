@@ -210,23 +210,24 @@ For the expression `5 > 3 == true`:
   - Single/multi-character tokens, keywords, identifiers, numbers, strings
   - Comment handling, line tracking, error reporting
   - UTF-8 support and whitespace handling
-- **VM (`src/vm.rs`)**: Bytecode execution engine
+- **VM (`src/vm.rs`)**: Bytecode execution engine with function call support
   - Stack-based arithmetic operations
   - Boolean and nil value operations
   - Comparison operations (equal, greater, less)
   - Logical operations (not)
   - Constant loading and manipulation
   - Local variable operations (get/set local)
+  - Function call execution with call stack management
   - Error handling and debugging support
 - **Chunk (`src/chunk.rs`)**: Bytecode storage and management
   - Dynamic bytecode arrays with constant pools
   - Line number tracking for debugging
 - **Value System (`src/value.rs`)**: Runtime value representation with type system
-  - Boolean, nil, number, and string value types
+  - Boolean, nil, number, string, and function value types
   - Type checking and safe value access
   - Cross-type equality and truthiness evaluation
 - **Debug System (`src/debug.rs`)**: Disassembly and debugging tools
-- **Compiler (`src/compiler.rs`)**: Pratt parser implementation with expression parsing and local variables
+- **Compiler (`src/compiler.rs`)**: Pratt parser implementation with expression parsing, local variables, and functions
   - **Number literals** - Parse and emit constants for numeric values
   - **Boolean and nil literals** - Parse true, false, nil values
   - **Binary operations** - Addition, subtraction, multiplication, division with correct precedence
@@ -240,6 +241,9 @@ For the expression `5 > 3 == true`:
   - **Variable shadowing** - Nested scopes can redefine variables
   - **Global variables** - Top-level variable declarations
   - **Scope management** - Automatic cleanup of local variables
+  - **Function declarations** - Parse fun name() { body } syntax
+  - **Function calls** - Parse func() syntax with call precedence
+  - **Return statements** - Parse return value syntax
 
 **Recently Fixed**:
 - **Control Flow Statements** - Major compiler fixes for stack management in control flow
@@ -250,11 +254,11 @@ For the expression `5 > 3 == true`:
   - **Stack management** - Fixed critical stack underflow issues with jump instructions
   
 **In Progress**:
-- Additional language features (functions, classes)
+- Additional language features (classes)
 
 ## Testing
 
-**Comprehensive Test Coverage - 196 Tests**:
+**Comprehensive Test Coverage - 249 Tests**:
 
 ```bash
 # Run all tests
@@ -394,10 +398,10 @@ Added comprehensive test files:
 src/
 ├── main.rs          # Entry point, REPL/file execution
 ├── scanner.rs       # Lexical analysis (25+ tests)
-├── compiler.rs      # Parsing & bytecode generation (25+ tests) 
-├── vm.rs           # Bytecode execution (20+ tests)
+├── compiler.rs      # Parsing & bytecode generation (35+ tests)
+├── vm.rs           # Bytecode execution (35+ tests)
 ├── chunk.rs        # Bytecode storage (15+ tests)
-├── value.rs        # Runtime values (10+ tests)
+├── value.rs        # Runtime values (15+ tests)
 └── debug.rs        # Disassembly tools (25+ tests)
 ```
 
@@ -433,6 +437,15 @@ src/
 - Nested control structures with proper scoping
 - Print statements: `print value;`
 
+**Functions**:
+- Function declarations: `fun name() { statements }`
+- Function calls: `func()`
+- Return statements: `return value;`
+- Function call expressions: `print func() + 1`
+- Recursive functions with proper call stack management
+- Call stack management with proper scoping
+- Function objects as first-class values
+
 **Example Programs**:
 
 ```javascript
@@ -462,9 +475,38 @@ for (var i = 1; i < 3; i = i + 1) {
         print i + j;
     }
 }
+
+// Functions
+fun greet(name) {
+    print "Hello, " + name;
+}
+
+fun add(a, b) {
+    return a + b;
+}
+
+greet("World");
+var sum = add(5, 3);
+print "Sum: " + sum;
+
+// Function calls in expressions
+print "Double sum: " + (add(10, 20) * 2);
+
+// Recursive functions
+var counter = 5;
+fun countdown() {
+    if (counter > 0) {
+        print counter;
+        counter = counter - 1;
+        countdown();
+    } else {
+        print "Done!";
+    }
+}
+countdown();
 ```
 
 **Planned**:
-- Function definitions and calls
+- Function parameters (currently functions take no parameters)
 - String operations
 - Classes and objects

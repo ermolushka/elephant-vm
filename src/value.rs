@@ -1,9 +1,25 @@
+#[derive(Debug, Clone)]
+pub struct FunctionObj {
+    pub arity: usize,
+    pub chunk: crate::chunk::Chunk,
+    pub name: String,
+}
+
+impl PartialEq for FunctionObj {
+    fn eq(&self, other: &Self) -> bool {
+        self.arity == other.arity && self.name == other.name
+        // Note: We don't compare chunks for equality as that would be expensive
+        // and not particularly useful for function objects
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Bool(bool),
     Nil,
     Number(f64),
     String(String),
+    Function(FunctionObj),
 }
 
 impl Value {
@@ -20,6 +36,10 @@ impl Value {
     }
     pub fn is_string(&self) -> bool {
         matches!(self, Value::String(_))
+    }
+
+    pub fn is_function(&self) -> bool {
+        matches!(self, Value::Function(_))
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -61,6 +81,7 @@ impl Value {
                 // pointer equality here, but for now we'll use content comparison
                 a == b
             }
+            (Value::Function(a), Value::Function(b)) => a == b,
             _ => false,
         }
     }
@@ -87,13 +108,24 @@ impl Value {
         }
     }
 
+    pub fn as_function(&self) -> Option<&FunctionObj> {
+        match self {
+            Value::Function(f) => Some(f),
+            _ => None,
+        }
+    }
+
     pub fn new_string(value: String) -> Self {
         Value::String(value)
+    }
+
+    pub fn new_function(arity: usize, chunk: crate::chunk::Chunk, name: String) -> Self {
+        Value::Function(FunctionObj { arity, chunk, name })
     }
 }
 
 // constant pool as array of values
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ValueArray {
     pub values: Vec<Value>,
 }
@@ -447,5 +479,71 @@ mod tests {
         assert_eq!(debug_nil, "Nil");
         assert!(debug_num.contains("Number"));
         assert!(debug_num.contains("3.14"));
+    }
+
+    // Function-related tests
+
+    #[test]
+    fn test_value_function_creation_and_access() {
+        let chunk = crate::chunk::Chunk::init_chunk();
+        let func = Value::new_function(2, chunk, "test_func".to_string());
+
+        assert!(func.is_function());
+        assert!(!func.is_bool());
+        assert!(!func.is_nil());
+        assert!(!func.is_number());
+        assert!(!func.is_string());
+
+        if let Some(func_obj) = func.as_function() {
+            assert_eq!(func_obj.arity, 2);
+            assert_eq!(func_obj.name, "test_func");
+        } else {
+            panic!("Expected function object");
+        }
+    }
+
+    #[test]
+    fn test_value_function_equality() {
+        let chunk1 = crate::chunk::Chunk::init_chunk();
+        let chunk2 = crate::chunk::Chunk::init_chunk();
+
+        let func1 = Value::new_function(1, chunk1, "func1".to_string());
+        let func2 = Value::new_function(1, chunk2, "func1".to_string());
+        let func3 = Value::new_function(2, crate::chunk::Chunk::init_chunk(), "func1".to_string());
+        let func4 = Value::new_function(1, crate::chunk::Chunk::init_chunk(), "func2".to_string());
+
+        // Functions with same name and arity should be equal
+        assert!(func1.values_equal(&func2));
+
+        // Functions with different arity should not be equal
+        assert!(!func1.values_equal(&func3));
+
+        // Functions with different names should not be equal
+        assert!(!func1.values_equal(&func4));
+    }
+
+    #[test]
+    fn test_value_function_debug_formatting() {
+        let chunk = crate::chunk::Chunk::init_chunk();
+        let func = Value::new_function(0, chunk, "my_func".to_string());
+
+        let debug_str = format!("{:?}", func);
+        assert!(debug_str.contains("Function"));
+        assert!(debug_str.contains("my_func"));
+    }
+
+    #[test]
+    fn test_value_function_type_checks() {
+        let chunk = crate::chunk::Chunk::init_chunk();
+        let func = Value::new_function(3, chunk, "test".to_string());
+
+        assert!(func.is_function());
+        assert_eq!(func.as_function().unwrap().arity, 3);
+        assert_eq!(func.as_function().unwrap().name, "test");
+
+        // Test that other type checks return false
+        assert_eq!(func.as_bool(), None);
+        assert_eq!(func.as_number(), None);
+        assert_eq!(func.as_string(), None);
     }
 }

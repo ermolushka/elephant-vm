@@ -47,8 +47,8 @@ impl<'a> ParseRules<'a> {
             TokenType::LeftParen,
             ParseRule {
                 prefix: Some(Compiler::grouping),
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::call),
+                precedence: Precedence::PrecCall,
             },
         );
         rules.insert(
@@ -435,6 +435,8 @@ impl<'a> Compiler<'a> {
         // we found start of variable
         if self.match_token(TokenType::Var) {
             self.var_declaration();
+        } else if self.match_token(TokenType::Fun) {
+            self.fun_declaration();
         } else {
             // we found start of statement
             self.statement();
@@ -458,6 +460,61 @@ impl<'a> Compiler<'a> {
         if self.scope_depth == 0 {
             self.emit_bytes(OpCode::OpDefineGlobal as u8, global as u8);
         }
+    }
+
+    pub fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expect function name.");
+        self.mark_initialized();
+        let function_name = self.parser.previous.clone();
+        self.function(TokenType::Fun, &function_name);
+        if self.scope_depth == 0 {
+            self.emit_bytes(OpCode::OpDefineGlobal as u8, global as u8);
+        }
+    }
+
+    pub fn function(&mut self, _function_type: TokenType, function_name: &Token) {
+        // Save the current chunk and parser state
+        let enclosing_chunk = self.parser.chunk.clone();
+        let enclosing_locals = self.locals.clone();
+        let enclosing_local_count = self.local_count;
+        let enclosing_scope_depth = self.scope_depth;
+
+        // Create a new chunk for the function
+        self.parser.chunk = Chunk::init_chunk();
+        self.locals.clear();
+        self.local_count = 0;
+        self.scope_depth = 0;
+
+        self.begin_scope();
+
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+        // For now, we'll assume no parameters
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.");
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
+        self.block();
+
+        // End the function scope
+        self.end_scope();
+
+        // Emit return at end of function if not already present
+        self.emit_return();
+
+        // Create function object - get the actual function name from the source
+        let name_str = &self.scanner.source[function_name.start..function_name.start + function_name.length];
+        let function = Value::new_function(
+            0, // arity - no parameters for now
+            self.parser.chunk.clone(),
+            name_str.to_string()
+        );
+
+        // Restore the enclosing chunk and parser state
+        self.parser.chunk = enclosing_chunk;
+        self.locals = enclosing_locals;
+        self.local_count = enclosing_local_count;
+        self.scope_depth = enclosing_scope_depth;
+
+        // Emit the function as a constant
+        self.emit_constant(function);
     }
     pub fn parse_variable(&mut self, message: &str) -> usize {
         self.consume(TokenType::Identifier, message);
@@ -600,6 +657,8 @@ impl<'a> Compiler<'a> {
             self.if_statement();
         } else if self.match_token(TokenType::While) {
             self.while_statement();
+        } else if self.match_token(TokenType::Return) {
+            self.return_statement();
         } else if self.match_token(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -703,6 +762,27 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(Precedence::PrecOr);
         self.patch_jump(end_jump);
     }
+
+    pub fn call(&mut self, _can_assign: bool) {
+        let arg_count = self.argument_list();
+        self.emit_byte(OpCode::OpCall as u8);
+        self.emit_byte(arg_count);
+    }
+
+    pub fn argument_list(&mut self) -> u8 {
+        let mut arg_count = 0;
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.expression();
+                arg_count += 1;
+                if !self.match_token(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after arguments.");
+        arg_count
+    }
     
 
     pub fn block(&mut self) {
@@ -717,6 +797,16 @@ impl<'a> Compiler<'a> {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
         self.emit_byte(OpCode::OpPrint as u8);
+    }
+
+    pub fn return_statement(&mut self) {
+        if self.match_token(TokenType::Semicolon) {
+            self.emit_return();
+        } else {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after return value.");
+            self.emit_byte(OpCode::OpReturn as u8);
+        }
     }
 
     pub fn expression_statement(&mut self) {
@@ -1352,8 +1442,8 @@ mod tests {
 
         let paren_rule = compiler.get_rule(TokenType::LeftParen);
         assert!(paren_rule.prefix.is_some());
-        assert!(paren_rule.infix.is_none());
-        assert_eq!(paren_rule.precedence, Precedence::PrecNone);
+        assert!(paren_rule.infix.is_some()); // Function calls
+        assert_eq!(paren_rule.precedence, Precedence::PrecCall);
     }
 
     #[test]
@@ -2263,9 +2353,129 @@ mod tests {
         assert!(chunk.code.contains(&(OpCode::OpJump as u8)));
         assert!(chunk.code.contains(&(OpCode::OpLoop as u8)));
         assert!(chunk.code.contains(&(OpCode::OpEqual as u8)));
-        
+
         // Should have multiple print statements
         let print_count = chunk.code.iter().filter(|&&x| x == OpCode::OpPrint as u8).count();
         assert!(print_count >= 2);
+    }
+
+    // Function-related tests
+
+    #[test]
+    fn test_compiler_function_declaration() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile(
+            "fun test() { print \"hello\"; }",
+            &mut chunk
+        );
+        assert!(result);
+
+        // Should contain function definition and global definition
+        assert!(chunk.code.contains(&(OpCode::OpConstant as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpDefineGlobal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpReturn as u8)));
+
+        // Should have function constant in constants array
+        let function_constant = chunk.constants.values.iter()
+            .find(|v| v.is_function())
+            .expect("Should contain a function constant");
+        assert!(function_constant.is_function());
+
+        if let Some(func) = function_constant.as_function() {
+            assert_eq!(func.name, "test");
+            assert_eq!(func.arity, 0);
+            // Function should have print and return instructions
+            assert!(func.chunk.code.contains(&(OpCode::OpPrint as u8)));
+            assert!(func.chunk.code.contains(&(OpCode::OpReturn as u8)));
+        }
+    }
+
+    #[test]
+    fn test_compiler_function_call() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile(
+            "fun test() { return 42; } test();",
+            &mut chunk
+        );
+        assert!(result);
+
+        // Should contain function definition, global get, and call
+        assert!(chunk.code.contains(&(OpCode::OpConstant as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpDefineGlobal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpGetGlobal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpCall as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpPop as u8))); // Call result cleanup
+    }
+
+    #[test]
+    fn test_compiler_function_with_return() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile(
+            "fun answer() { return 42; } var result = answer();",
+            &mut chunk
+        );
+        assert!(result);
+
+        // Should contain function definition, call, and variable assignment
+        assert!(chunk.code.contains(&(OpCode::OpConstant as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpDefineGlobal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpGetGlobal as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpCall as u8)));
+        assert!(chunk.code.contains(&(OpCode::OpDefineGlobal as u8))); // For result variable
+    }
+
+    #[test]
+    fn test_compiler_function_call_expression() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile(
+            "fun add() { return 5; } print add();",
+            &mut chunk
+        );
+        assert!(result);
+
+        // Should contain function call followed by print
+        let call_pos = chunk.code.iter().position(|&x| x == OpCode::OpCall as u8)
+            .expect("Should contain function call");
+        let print_pos = chunk.code.iter().position(|&x| x == OpCode::OpPrint as u8)
+            .expect("Should contain print");
+
+        assert!(call_pos < print_pos, "Call should come before print");
+    }
+
+    #[test]
+    fn test_compiler_multiple_functions() {
+        let mut string_table = HashMap::new();
+        let mut compiler = Compiler::new(&mut string_table);
+        let mut chunk = Chunk::init_chunk();
+
+        let result = compiler.compile(
+            "fun func1() { return 1; } fun func2() { return 2; } func1(); func2();",
+            &mut chunk
+        );
+        assert!(result);
+
+        // Should contain multiple function constants
+        let function_count = chunk.constants.values.iter()
+            .filter(|v| v.is_function())
+            .count();
+        assert_eq!(function_count, 2, "Should have two function constants");
+
+        // Should contain multiple calls
+        let call_count = chunk.code.iter()
+            .filter(|&&x| x == OpCode::OpCall as u8)
+            .count();
+        assert_eq!(call_count, 2, "Should have two function calls");
     }
 }

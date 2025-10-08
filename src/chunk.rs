@@ -29,12 +29,13 @@ pub enum OpCode {
     OpJumpIfFalse,
     OpJump,
     OpLoop,
+    OpCall,
 }
 
 /**
  * a chunk of sequences of bytecodes, I will use Rust's Vec as a dynamic array to store the operation codes
  */
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: ValueArray,
