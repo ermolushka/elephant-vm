@@ -292,11 +292,21 @@ impl VM {
                 }
                 OP_GET_LOCAL => {
                     let local_index = self.read_byte() as usize;
-                    self.push(self.stack[local_index].clone());
+                    if !self.frames.is_empty() {
+                        let frame = &self.frames[self.frames.len() - 1];
+                        self.push(self.stack[frame.slots + local_index].clone());
+                    } else {
+                        self.push(self.stack[local_index].clone());
+                    }
                 }
                 OP_SET_LOCAL => {
                     let local_index = self.read_byte() as usize;
-                    self.stack[local_index] = self.peek(0);
+                    if !self.frames.is_empty() {
+                        let frame = &self.frames[self.frames.len() - 1];
+                        self.stack[frame.slots + local_index] = self.peek(0);
+                    } else {
+                        self.stack[local_index] = self.peek(0);
+                    }
                 }
                 OP_JUMP_IF_FALSE => {
                     let condition = self.pop();
@@ -350,7 +360,7 @@ impl VM {
             self.frames.push(CallFrame {
                 function: function.clone(),
                 ip: self.ip, // IP is already at the correct return position
-                slots: self.stack.len() - arg_count - 1, // -1 for the function itself
+                slots: self.stack.len() - arg_count, // Start of function arguments
                 caller_chunk: self.chunk.clone(), // Save the caller's chunk
             });
 

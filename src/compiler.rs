@@ -493,7 +493,24 @@ impl<'a> Compiler<'a> {
         self.begin_scope();
 
         self.consume(TokenType::LeftParen, "Expect '(' after function name.");
-        // For now, we'll assume no parameters
+        
+        // Parse function parameters
+        let mut arity = 0;
+        if !self.check(TokenType::RightParen) {
+            loop {
+                if arity >= 255 {
+                    self.error_at_current("Can't have more than 255 parameters.");
+                }
+                
+                self.parse_variable("Expect parameter name.");
+                self.mark_initialized();
+                arity += 1;
+                
+                if !self.match_token(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
         self.consume(TokenType::RightParen, "Expect ')' after parameters.");
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
         self.block();
@@ -508,7 +525,7 @@ impl<'a> Compiler<'a> {
         let name_str =
             &self.scanner.source[function_name.start..function_name.start + function_name.length];
         let function = Value::new_function(
-            0, // arity - no parameters for now
+            arity, // arity - number of parameters
             self.parser.chunk.clone(),
             name_str.to_string(),
         );

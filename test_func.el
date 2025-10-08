@@ -29,3 +29,34 @@ fun countdown() {
 
 counter = 5;
 countdown();
+
+fun test(n) {
+    print n;
+}
+
+// Test function with multiple arguments
+fun add(a, b) {
+    return a + b;
+}
+
+// Test function with single argument and return
+fun square(x) {
+    return x * x;
+}
+
+// Test function with no arguments (should still work)
+fun get_answer() {
+    return 42;
+}
+
+// Test function with many arguments
+fun complex_calc(a, b, c, d) {
+    return a + b * c - d;
+}
+
+// Test function calls
+test(100);
+print add(5, 3);
+print square(4);
+print get_answer();
+print complex_calc(1, 2, 3, 4);
