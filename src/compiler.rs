@@ -493,7 +493,7 @@ impl<'a> Compiler<'a> {
         self.begin_scope();
 
         self.consume(TokenType::LeftParen, "Expect '(' after function name.");
-        
+
         // Parse function parameters
         let mut arity = 0;
         if !self.check(TokenType::RightParen) {
@@ -501,11 +501,11 @@ impl<'a> Compiler<'a> {
                 if arity >= 255 {
                     self.error_at_current("Can't have more than 255 parameters.");
                 }
-                
+
                 self.parse_variable("Expect parameter name.");
                 self.mark_initialized();
                 arity += 1;
-                
+
                 if !self.match_token(TokenType::Comma) {
                     break;
                 }
