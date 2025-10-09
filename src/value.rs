@@ -1,8 +1,12 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 #[derive(Debug, Clone)]
 pub struct FunctionObj {
     pub arity: usize,
     pub chunk: crate::chunk::Chunk,
     pub name: String,
+    pub upvalue_count: usize,
 }
 
 impl PartialEq for FunctionObj {
@@ -13,6 +17,32 @@ impl PartialEq for FunctionObj {
     }
 }
 
+// Upvalue represents a closed-over variable
+#[derive(Debug, Clone)]
+pub struct Upvalue {
+    pub location: usize,       // index into the stack
+    pub closed: Option<Value>, // closed-over value when moved to heap
+}
+
+impl PartialEq for Upvalue {
+    fn eq(&self, other: &Self) -> bool {
+        self.location == other.location
+    }
+}
+
+// Closure wraps a function with captured upvalues
+#[derive(Debug, Clone)]
+pub struct ClosureObj {
+    pub function: FunctionObj,
+    pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
+}
+
+impl PartialEq for ClosureObj {
+    fn eq(&self, other: &Self) -> bool {
+        self.function == other.function
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Bool(bool),
@@ -20,6 +50,7 @@ pub enum Value {
     Number(f64),
     String(String),
     Function(FunctionObj),
+    Closure(ClosureObj),
 }
 
 impl Value {
@@ -40,6 +71,10 @@ impl Value {
 
     pub fn is_function(&self) -> bool {
         matches!(self, Value::Function(_))
+    }
+
+    pub fn is_closure(&self) -> bool {
+        matches!(self, Value::Closure(_))
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -82,6 +117,7 @@ impl Value {
                 a == b
             }
             (Value::Function(a), Value::Function(b)) => a == b,
+            (Value::Closure(a), Value::Closure(b)) => a == b,
             _ => false,
         }
     }
@@ -115,12 +151,50 @@ impl Value {
         }
     }
 
+    pub fn as_closure(&self) -> Option<&ClosureObj> {
+        match self {
+            Value::Closure(c) => Some(c),
+            _ => None,
+        }
+    }
+
     pub fn new_string(value: String) -> Self {
         Value::String(value)
     }
 
     pub fn new_function(arity: usize, chunk: crate::chunk::Chunk, name: String) -> Self {
-        Value::Function(FunctionObj { arity, chunk, name })
+        Value::Function(FunctionObj {
+            arity,
+            chunk,
+            name,
+            upvalue_count: 0,
+        })
+    }
+
+    pub fn new_function_with_upvalues(
+        arity: usize,
+        chunk: crate::chunk::Chunk,
+        name: String,
+        upvalue_count: usize,
+    ) -> Self {
+        Value::Function(FunctionObj {
+            arity,
+            chunk,
+            name,
+            upvalue_count,
+        })
+    }
+
+    pub fn new_closure(function: FunctionObj) -> Self {
+        let upvalues = vec![];
+        Value::Closure(ClosureObj { function, upvalues })
+    }
+
+    pub fn new_closure_with_upvalues(
+        function: FunctionObj,
+        upvalues: Vec<Rc<RefCell<Upvalue>>>,
+    ) -> Self {
+        Value::Closure(ClosureObj { function, upvalues })
     }
 }
 
