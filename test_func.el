@@ -60,3 +60,13 @@ print add(5, 3);
 print square(4);
 print get_answer();
 print complex_calc(1, 2, 3, 4);
+
+var x = "global";
+fun outer() {
+  var x = "outer";
+  fun inner() {
+    print x;
+  }
+  inner();
+}
+outer();

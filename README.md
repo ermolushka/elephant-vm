@@ -126,6 +126,10 @@ pub struct VM {
 - `OP_JUMP_IF_FALSE`: Conditional jump for control flow
 - `OP_JUMP`: Unconditional jump
 - `OP_LOOP`: Loop back jump
+- `OP_CALL`: Function call operations
+- `OP_CLOSURE`: Create closure and capture upvalues
+- `OP_GET_UPVALUE`, `OP_SET_UPVALUE`: Access captured variables
+- `OP_CLOSE_UPVALUE`: Close upvalue and move to heap
 - `OP_RETURN`: End execution, return result
 
 **Example Execution**:
@@ -169,18 +173,21 @@ pub struct Chunk {
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    Bool(bool),     // Boolean values: true, false
-    Nil,           // Null/undefined value
-    Number(f64),   // Floating-point numbers
-    String(String), // String values
+    Bool(bool),           // Boolean values: true, false
+    Nil,                  // Null/undefined value
+    Number(f64),          // Floating-point numbers
+    String(String),       // String values
+    Function(FunctionObj), // Function objects with bytecode
+    Closure(ClosureObj),   // Closures with captured upvalues
 }
 ```
 
 **Key Features**:
-- Type checking methods: `is_bool()`, `is_nil()`, `is_number()`, `is_string()`
-- Safe access methods: `as_bool()`, `as_number()`
+- Type checking methods: `is_bool()`, `is_nil()`, `is_number()`, `is_string()`, `is_function()`, `is_closure()`
+- Safe access methods: `as_bool()`, `as_number()`, `as_function()`, `as_closure()`
 - Value comparison: `values_equal()` for cross-type comparisons
 - Truthiness evaluation: `is_falsy()` (nil and false are falsy)
+- Closure support: `Upvalue` struct for captured variables with heap migration
 
 **ValueArray**: Manages constant storage
 ```rust
@@ -223,11 +230,12 @@ For the expression `5 > 3 == true`:
   - Dynamic bytecode arrays with constant pools
   - Line number tracking for debugging
 - **Value System (`src/value.rs`)**: Runtime value representation with type system
-  - Boolean, nil, number, string, and function value types
+  - Boolean, nil, number, string, function, and closure value types
   - Type checking and safe value access
   - Cross-type equality and truthiness evaluation
+  - Upvalue management for closures with open/closed states
 - **Debug System (`src/debug.rs`)**: Disassembly and debugging tools
-- **Compiler (`src/compiler.rs`)**: Pratt parser implementation with expression parsing, local variables, and functions
+- **Compiler (`src/compiler.rs`)**: Pratt parser implementation with expression parsing, local variables, functions, and closures
   - **Number literals** - Parse and emit constants for numeric values
   - **Boolean and nil literals** - Parse true, false, nil values
   - **Binary operations** - Addition, subtraction, multiplication, division with correct precedence
@@ -241,9 +249,12 @@ For the expression `5 > 3 == true`:
   - **Variable shadowing** - Nested scopes can redefine variables
   - **Global variables** - Top-level variable declarations
   - **Scope management** - Automatic cleanup of local variables
-  - **Function declarations** - Parse fun name() { body } syntax
-  - **Function calls** - Parse func() syntax with call precedence
+  - **Function declarations** - Parse fun name(params) { body } syntax
+  - **Function calls** - Parse func(args) syntax with call precedence
   - **Return statements** - Parse return value syntax
+  - **Closures** - Automatic capture of variables from enclosing scopes
+  - **Upvalue resolution** - Track and emit captured variables across scopes
+  - **Capture tracking** - Mark locals as captured when referenced by closures
 
   
 **In Progress**:
@@ -373,13 +384,20 @@ src/
 - Print statements: `print value;`
 
 **Functions**:
-- Function declarations: `fun name() { statements }`
-- Function calls: `func()`
+- Function declarations: `fun name(params) { statements }`
+- Function calls: `func(args)`
 - Return statements: `return value;`
 - Function call expressions: `print func() + 1`
 - Recursive functions with proper call stack management
 - Call stack management with proper scoping
 - Function objects as first-class values
+
+**Closures**:
+- Lexical scope capture: Functions can capture variables from enclosing scopes
+- Upvalue management: Captured variables are properly tracked and closed
+- Mutable captures: Closures can modify captured variables
+- Nested closures: Inner functions can capture from multiple enclosing scopes
+- Automatic upvalue closure: Variables move from stack to heap when scope ends
 
 **Example Programs**:
 
@@ -439,9 +457,54 @@ fun countdown() {
     }
 }
 countdown();
+
+// Closures - capturing variables from enclosing scope
+fun outer() {
+    var x = 10;
+    fun inner() {
+        print x;  // Captures x from outer scope
+    }
+    inner();  // Prints 10
+}
+outer();
+
+// Closures with mutable captures
+fun makeCounter() {
+    var count = 0;
+    fun increment() {
+        count = count + 1;
+        print count;
+    }
+    increment();  // Prints 1
+    increment();  // Prints 2
+    increment();  // Prints 3
+}
+makeCounter();
+
+// Closures with parameters
+fun makeAdder(x) {
+    fun add(y) {
+        print x + y;  // Captures parameter x
+    }
+    add(5);   // Prints 105
+    add(10);  // Prints 110
+}
+makeAdder(100);
+
+// Multiple captured variables
+fun test() {
+    var a = 1;
+    var b = 2;
+    var c = 3;
+    fun sum() {
+        print a + b + c;  // Captures a, b, c
+    }
+    sum();  // Prints 6
+}
+test();
 ```
 
 **Planned**:
-- Function parameters (currently functions take no parameters)
-- String operations
+- String operations and methods
 - Classes and objects
+- First-class closures (returning closures from functions)

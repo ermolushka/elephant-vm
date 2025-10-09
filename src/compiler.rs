@@ -371,7 +371,15 @@ impl<'a> ParseRules<'a> {
 pub struct Local {
     pub name: String,
     pub depth: i32,
+    pub is_captured: bool,
 }
+
+#[derive(Clone, Debug)]
+pub struct Upvalue {
+    pub index: u8,
+    pub is_local: bool,
+}
+
 const UINT8_COUNT: usize = 256;
 pub struct Compiler<'a> {
     pub scanner: Scanner<'a>,
@@ -380,6 +388,9 @@ pub struct Compiler<'a> {
     pub locals: Vec<Local>,
     pub local_count: usize,
     pub scope_depth: i32,
+    pub upvalues: Vec<Upvalue>,
+    pub upvalue_count: usize,
+    pub enclosing_locals: Vec<Vec<Local>>, // Stack of enclosing scopes' locals
     pub debug: bool,
 }
 
@@ -411,6 +422,9 @@ impl<'a> Compiler<'a> {
             locals: Vec::new(),
             local_count: 0,
             scope_depth: 0,
+            upvalues: Vec::new(),
+            upvalue_count: 0,
+            enclosing_locals: Vec::new(),
             debug,
         }
     }
@@ -484,11 +498,16 @@ impl<'a> Compiler<'a> {
         let enclosing_local_count = self.local_count;
         let enclosing_scope_depth = self.scope_depth;
 
+        // Push current locals onto the enclosing stack so nested functions can capture them
+        self.enclosing_locals.push(enclosing_locals.clone());
+
         // Create a new chunk for the function
         self.parser.chunk = Chunk::init_chunk();
         self.locals.clear();
         self.local_count = 0;
         self.scope_depth = 0;
+        self.upvalues.clear();
+        self.upvalue_count = 0;
 
         self.begin_scope();
 
@@ -524,20 +543,47 @@ impl<'a> Compiler<'a> {
         // Create function object - get the actual function name from the source
         let name_str =
             &self.scanner.source[function_name.start..function_name.start + function_name.length];
-        let function = Value::new_function(
+
+        // Save upvalue information before restoring state
+        let upvalue_count = self.upvalue_count;
+        let upvalues = self.upvalues.clone();
+
+        let function = Value::new_function_with_upvalues(
             arity, // arity - number of parameters
             self.parser.chunk.clone(),
             name_str.to_string(),
+            upvalue_count,
         );
+
+        // Pop the enclosing locals stack
+        self.enclosing_locals.pop();
 
         // Restore the enclosing chunk and parser state
         self.parser.chunk = enclosing_chunk;
-        self.locals = enclosing_locals;
+
+        // Apply captured flags back to the enclosing locals
+        let mut restored_locals = enclosing_locals;
+        if let Some(last_enclosing) = self.enclosing_locals.last() {
+            for (i, local) in last_enclosing.iter().enumerate() {
+                if i < restored_locals.len() {
+                    restored_locals[i].is_captured = local.is_captured;
+                }
+            }
+        }
+        self.locals = restored_locals;
+
         self.local_count = enclosing_local_count;
         self.scope_depth = enclosing_scope_depth;
 
-        // Emit the function as a constant
-        self.emit_constant(function);
+        // Emit OP_CLOSURE instead of OP_CONSTANT
+        let constant_index = self.make_constant(function);
+        self.emit_bytes(OpCode::OpClosure as u8, constant_index as u8);
+
+        // Emit upvalue information
+        for upvalue in upvalues.iter() {
+            self.emit_byte(if upvalue.is_local { 1 } else { 0 });
+            self.emit_byte(upvalue.index);
+        }
     }
     pub fn parse_variable(&mut self, message: &str) -> usize {
         self.consume(TokenType::Identifier, message);
@@ -584,6 +630,7 @@ impl<'a> Compiler<'a> {
         self.locals.push(Local {
             name: name.to_string(),
             depth: -1,
+            is_captured: false,
         });
         self.local_count += 1;
     }
@@ -610,16 +657,23 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn named_variable(&mut self, name: Token, can_assign: bool) {
-        let mut get_op = OpCode::OpGetGlobal;
-        let mut set_op = OpCode::OpSetGlobal;
+        let mut get_op;
+        let mut set_op;
         let mut arg = self.resolve_local(name);
+
         if arg != -1 {
             get_op = OpCode::OpGetLocal;
             set_op = OpCode::OpSetLocal;
         } else {
-            arg = self.identifier_constant(name) as i8;
-            get_op = OpCode::OpGetGlobal;
-            set_op = OpCode::OpSetGlobal;
+            arg = self.resolve_upvalue(name);
+            if arg != -1 {
+                get_op = OpCode::OpGetUpvalue;
+                set_op = OpCode::OpSetUpvalue;
+            } else {
+                arg = self.identifier_constant(name) as i8;
+                get_op = OpCode::OpGetGlobal;
+                set_op = OpCode::OpSetGlobal;
+            }
         }
 
         // first condition checks smth like book.chapter(one).page = 10;
@@ -645,6 +699,53 @@ impl<'a> Compiler<'a> {
                 return i as i8;
             }
         }
+        -1
+    }
+
+    pub fn add_upvalue(&mut self, index: u8, is_local: bool) -> i8 {
+        let upvalue_count = self.upvalue_count;
+
+        // Check if this upvalue already exists
+        for i in 0..upvalue_count {
+            let upvalue = &self.upvalues[i];
+            if upvalue.index == index && upvalue.is_local == is_local {
+                return i as i8;
+            }
+        }
+
+        if upvalue_count >= UINT8_COUNT {
+            self.error_at_current("Too many closure variables in function.");
+            return 0;
+        }
+
+        self.upvalues.push(Upvalue { index, is_local });
+        self.upvalue_count += 1;
+        (self.upvalue_count - 1) as i8
+    }
+
+    pub fn resolve_upvalue(&mut self, name: Token) -> i8 {
+        // Check if we have any enclosing scopes
+        if self.enclosing_locals.is_empty() {
+            return -1;
+        }
+
+        let lexeme = &self.scanner.source[name.start..name.start + name.length];
+
+        // Search in the immediate enclosing scope
+        let enclosing_index = self.enclosing_locals.len() - 1;
+        for (i, local) in self.enclosing_locals[enclosing_index]
+            .iter()
+            .enumerate()
+            .rev()
+        {
+            if local.name == lexeme && local.depth != -1 {
+                // Mark the variable as captured in the enclosing scope
+                self.enclosing_locals[enclosing_index][i].is_captured = true;
+                // Add as upvalue capturing a local from enclosing scope
+                return self.add_upvalue(i as u8, true);
+            }
+        }
+
         -1
     }
 
@@ -901,8 +1002,13 @@ impl<'a> Compiler<'a> {
 
         // Remove locals that are no longer in scope
         while self.local_count > 0 && self.locals[self.local_count - 1].depth > self.scope_depth {
+            // If the local is captured, close the upvalue; otherwise just pop
+            if self.locals[self.local_count - 1].is_captured {
+                self.emit_byte(OpCode::OpCloseUpvalue as u8);
+            } else {
+                self.emit_byte(OpCode::OpPop as u8);
+            }
             self.locals.pop();
-            self.emit_byte(OpCode::OpPop as u8);
             self.local_count -= 1;
         }
     }

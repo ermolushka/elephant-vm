@@ -30,6 +30,10 @@ pub enum OpCode {
     OpJump,
     OpLoop,
     OpCall,
+    OpClosure,
+    OpGetUpvalue,
+    OpSetUpvalue,
+    OpCloseUpvalue,
 }
 
 /**

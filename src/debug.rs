@@ -25,6 +25,10 @@ pub const OP_JUMP_IF_FALSE: u8 = OpCode::OpJumpIfFalse as u8;
 pub const OP_JUMP: u8 = OpCode::OpJump as u8;
 pub const OP_LOOP: u8 = OpCode::OpLoop as u8;
 pub const OP_CALL: u8 = OpCode::OpCall as u8;
+pub const OP_CLOSURE: u8 = OpCode::OpClosure as u8;
+pub const OP_GET_UPVALUE: u8 = OpCode::OpGetUpvalue as u8;
+pub const OP_SET_UPVALUE: u8 = OpCode::OpSetUpvalue as u8;
+pub const OP_CLOSE_UPVALUE: u8 = OpCode::OpCloseUpvalue as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -71,6 +75,10 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_JUMP => jump_instruction("OP_JUMP", 1, chunk, offset),
         OP_LOOP => jump_instruction("OP_LOOP", -1, chunk, offset),
         OP_CALL => byte_instruction("OP_CALL", chunk, offset),
+        OP_CLOSURE => closure_instruction("OP_CLOSURE", chunk, offset),
+        OP_GET_UPVALUE => byte_instruction("OP_GET_UPVALUE", chunk, offset),
+        OP_SET_UPVALUE => byte_instruction("OP_SET_UPVALUE", chunk, offset),
+        OP_CLOSE_UPVALUE => simple_instruction("OP_CLOSE_UPVALUE", offset),
 
         _ => {
             println!("Unknown opcode: {}", instruction);
@@ -125,6 +133,34 @@ pub fn byte_instruction(name: &str, chunk: &Chunk, offset: usize) -> usize {
     let constant = chunk.code[offset + 1];
     println!("{:16} {:4}", name, constant);
     offset + 2 // 2 because we have opcode and operand
+}
+
+pub fn closure_instruction(name: &str, chunk: &Chunk, mut offset: usize) -> usize {
+    offset += 1;
+    let constant = chunk.code[offset];
+    offset += 1;
+    println!(
+        "{:16} {:4} '{:?}'",
+        name, constant, chunk.constants.values[constant as usize]
+    );
+
+    // Read upvalue information
+    if let Some(function) = chunk.constants.values[constant as usize].as_function() {
+        for _ in 0..function.upvalue_count {
+            let is_local = chunk.code[offset];
+            offset += 1;
+            let index = chunk.code[offset];
+            offset += 1;
+            println!(
+                "{:04}      |                     {} {}",
+                offset - 2,
+                if is_local == 1 { "local" } else { "upvalue" },
+                index
+            );
+        }
+    }
+
+    offset
 }
 #[cfg(test)]
 mod tests {
