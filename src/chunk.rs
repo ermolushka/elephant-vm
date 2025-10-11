@@ -34,6 +34,11 @@ pub enum OpCode {
     OpGetUpvalue,
     OpSetUpvalue,
     OpCloseUpvalue,
+    OpClass,
+    OpGetProperty,
+    OpSetProperty,
+    OpMethod,
+    OpInvoke,
 }
 
 /**

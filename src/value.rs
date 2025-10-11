@@ -43,6 +43,33 @@ impl PartialEq for ClosureObj {
     }
 }
 
+// Class represents a class definition with its methods
+#[derive(Debug, Clone)]
+pub struct ClassObj {
+    pub name: String,
+    pub methods: Rc<RefCell<std::collections::HashMap<String, Value>>>, // Method name -> Closure
+}
+
+impl PartialEq for ClassObj {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && Rc::ptr_eq(&self.methods, &other.methods)
+    }
+}
+
+// Instance represents an instance of a class with its fields
+#[derive(Debug, Clone)]
+pub struct InstanceObj {
+    pub class: Rc<RefCell<ClassObj>>,
+    pub fields: Rc<RefCell<std::collections::HashMap<String, Value>>>, // Field name -> Value
+}
+
+impl PartialEq for InstanceObj {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare by reference equality (same instance)
+        Rc::ptr_eq(&self.class, &other.class) && Rc::ptr_eq(&self.fields, &other.fields)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Bool(bool),
@@ -51,6 +78,8 @@ pub enum Value {
     String(String),
     Function(FunctionObj),
     Closure(ClosureObj),
+    Class(ClassObj),
+    Instance(InstanceObj),
 }
 
 impl Value {
@@ -75,6 +104,14 @@ impl Value {
 
     pub fn is_closure(&self) -> bool {
         matches!(self, Value::Closure(_))
+    }
+
+    pub fn is_class(&self) -> bool {
+        matches!(self, Value::Class(_))
+    }
+
+    pub fn is_instance(&self) -> bool {
+        matches!(self, Value::Instance(_))
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -118,6 +155,8 @@ impl Value {
             }
             (Value::Function(a), Value::Function(b)) => a == b,
             (Value::Closure(a), Value::Closure(b)) => a == b,
+            (Value::Class(a), Value::Class(b)) => a == b,
+            (Value::Instance(a), Value::Instance(b)) => a == b,
             _ => false,
         }
     }
@@ -154,6 +193,34 @@ impl Value {
     pub fn as_closure(&self) -> Option<&ClosureObj> {
         match self {
             Value::Closure(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn as_class(&self) -> Option<&ClassObj> {
+        match self {
+            Value::Class(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn as_class_mut(&mut self) -> Option<&mut ClassObj> {
+        match self {
+            Value::Class(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn as_instance(&self) -> Option<&InstanceObj> {
+        match self {
+            Value::Instance(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn as_instance_mut(&mut self) -> Option<&mut InstanceObj> {
+        match self {
+            Value::Instance(i) => Some(i),
             _ => None,
         }
     }
@@ -195,6 +262,20 @@ impl Value {
         upvalues: Vec<Rc<RefCell<Upvalue>>>,
     ) -> Self {
         Value::Closure(ClosureObj { function, upvalues })
+    }
+
+    pub fn new_class(name: String) -> Self {
+        Value::Class(ClassObj {
+            name,
+            methods: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        })
+    }
+
+    pub fn new_instance(class: Rc<RefCell<ClassObj>>) -> Self {
+        Value::Instance(InstanceObj {
+            class,
+            fields: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        })
     }
 }
 
