@@ -422,6 +422,120 @@ impl VM {
                     self.close_upvalues(self.stack.len() - 1);
                     self.pop();
                 }
+                OP_CLASS => {
+                    // Read class name from constants
+                    let name_value = self.read_constant();
+                    if let Some(name) = name_value.as_string() {
+                        // Create a new class
+                        let class = Value::new_class(name);
+                        self.push(class);
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OP_GET_PROPERTY => {
+                    // Get property from instance
+                    let name_value = self.read_constant();
+                    if let Some(name) = name_value.as_string() {
+                        let instance_value = self.peek(0);
+                        if let Some(instance) = instance_value.as_instance() {
+                            // Try to get field first
+                            let fields_ref = instance.fields.borrow();
+                            if let Some(field_value) = fields_ref.get(&name) {
+                                let value = field_value.clone();
+                                drop(fields_ref); // Drop borrow before modifying stack
+                                self.pop(); // Pop instance
+                                self.push(value);
+                            } else {
+                                drop(fields_ref); // Drop borrow
+                                // Try to find method in class
+                                let class_ref = instance.class.borrow();
+                                let methods_ref = class_ref.methods.borrow();
+                                if let Some(method) = methods_ref.get(&name) {
+                                    let method_value = method.clone();
+                                    drop(methods_ref); // Drop borrow
+                                    drop(class_ref); // Drop borrow before modifying stack
+                                    self.pop(); // Pop instance
+                                    self.push(method_value);
+                                } else {
+                                    self.run_time_error(&format!("Undefined property '{}'", name));
+                                    return InterpretResult::InterpretRuntimeError;
+                                }
+                            }
+                        } else {
+                            self.run_time_error("Only instances have properties.");
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OP_SET_PROPERTY => {
+                    // Set property on instance
+                    let name_value = self.read_constant();
+                    if let Some(name) = name_value.as_string() {
+                        let value = self.pop(); // Value to set
+                        let instance_value = self.peek(0); // Peek at instance (don't pop yet)
+
+                        if let Some(instance) = instance_value.as_instance() {
+                            instance.fields.borrow_mut().insert(name, value.clone());
+                            self.pop(); // Now pop the instance
+                            // Push the value back (assignment is an expression)
+                            self.push(value);
+                        } else {
+                            self.run_time_error("Only instances have fields.");
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OP_METHOD => {
+                    // Attach method to class
+                    let name_value = self.read_constant();
+                    if let Some(name) = name_value.as_string() {
+                        let method = self.peek(0); // Method closure on stack
+                        let class_value = self.peek(1); // Class below method
+                        if let Some(class) = class_value.as_class() {
+                            class.methods.borrow_mut().insert(name, method.clone());
+                            self.pop(); // Pop method
+                        } else {
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OP_INVOKE => {
+                    // Method invocation
+                    let name_value = self.read_constant();
+                    let arg_count = self.read_byte() as usize;
+                    if let Some(name) = name_value.as_string() {
+                        let instance_value = self.peek(arg_count);
+                        if let Some(instance) = instance_value.as_instance() {
+                            // Look up method in class
+                            let class_ref = instance.class.borrow();
+                            let methods_ref = class_ref.methods.borrow();
+                            if let Some(method) = methods_ref.get(&name) {
+                                let method_to_call = method.clone();
+                                drop(methods_ref); // Drop borrow before call
+                                drop(class_ref); // Drop borrow before call
+                                // Call the method
+                                if !self.call_value(method_to_call, arg_count) {
+                                    return InterpretResult::InterpretRuntimeError;
+                                }
+                            } else {
+                                self.run_time_error(&format!("Undefined method '{}'", name));
+                                return InterpretResult::InterpretRuntimeError;
+                            }
+                        } else {
+                            self.run_time_error("Only instances have methods.");
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
                 _ => return InterpretResult::InterpretRuntimeError,
             }
         }
@@ -432,6 +546,26 @@ impl VM {
             return self.call_closure(callee, arg_count);
         } else if callee.is_function() {
             return self.call(callee, arg_count);
+        } else if callee.is_class() {
+            // Calling a class creates a new instance
+            if let Some(class_obj) = callee.as_class() {
+                let class_rc = Rc::new(RefCell::new(class_obj.clone()));
+                let instance = Value::new_instance(class_rc);
+                // Replace class on stack with instance
+                let stack_slot = self.stack.len() - arg_count - 1;
+                self.stack[stack_slot] = instance;
+                // If there's an init method, call it
+                let methods_ref = class_obj.methods.borrow();
+                if let Some(init_method) = methods_ref.get("init") {
+                    let method_to_call = init_method.clone();
+                    drop(methods_ref); // Drop the borrow before recursive call
+                    return self.call_value(method_to_call, arg_count);
+                } else if arg_count != 0 {
+                    self.run_time_error(&format!("Expected 0 arguments but got {}.", arg_count));
+                    return false;
+                }
+                return true;
+            }
         }
         self.run_time_error("Can only call functions and classes.");
         false

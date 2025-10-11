@@ -130,6 +130,11 @@ pub struct VM {
 - `OP_CLOSURE`: Create closure and capture upvalues
 - `OP_GET_UPVALUE`, `OP_SET_UPVALUE`: Access captured variables
 - `OP_CLOSE_UPVALUE`: Close upvalue and move to heap
+- `OP_CLASS`: Create class object
+- `OP_GET_PROPERTY`: Get property/method from instance
+- `OP_SET_PROPERTY`: Set property on instance
+- `OP_METHOD`: Attach method to class
+- `OP_INVOKE`: Invoke method on instance
 - `OP_RETURN`: End execution, return result
 
 **Example Execution**:
@@ -179,15 +184,18 @@ pub enum Value {
     String(String),       // String values
     Function(FunctionObj), // Function objects with bytecode
     Closure(ClosureObj),   // Closures with captured upvalues
+    Class(ClassObj),       // Class objects with methods
+    Instance(InstanceObj), // Class instances with fields
 }
 ```
 
 **Key Features**:
-- Type checking methods: `is_bool()`, `is_nil()`, `is_number()`, `is_string()`, `is_function()`, `is_closure()`
-- Safe access methods: `as_bool()`, `as_number()`, `as_function()`, `as_closure()`
+- Type checking methods: `is_bool()`, `is_nil()`, `is_number()`, `is_string()`, `is_function()`, `is_closure()`, `is_class()`, `is_instance()`
+- Safe access methods: `as_bool()`, `as_number()`, `as_function()`, `as_closure()`, `as_class()`, `as_instance()`
 - Value comparison: `values_equal()` for cross-type comparisons
 - Truthiness evaluation: `is_falsy()` (nil and false are falsy)
 - Closure support: `Upvalue` struct for captured variables with heap migration
+- Class support: `ClassObj` with shared mutable methods, `InstanceObj` with shared mutable fields
 
 **ValueArray**: Manages constant storage
 ```rust
@@ -255,10 +263,10 @@ For the expression `5 > 3 == true`:
   - **Closures** - Automatic capture of variables from enclosing scopes
   - **Upvalue resolution** - Track and emit captured variables across scopes
   - **Capture tracking** - Mark locals as captured when referenced by closures
-
-  
-**In Progress**:
-- Additional language features (classes)
+  - **Class declarations** - Parse class name { methods } syntax
+  - **Method definitions** - Parse methods within class bodies
+  - **Property access** - Parse instance.property and instance.method() syntax
+  - **Class instantiation** - Call classes like functions to create instances
 
 ## Testing
 
@@ -399,6 +407,14 @@ src/
 - Nested closures: Inner functions can capture from multiple enclosing scopes
 - Automatic upvalue closure: Variables move from stack to heap when scope ends
 
+**Classes and Objects**:
+- Class declarations: `class Name { methods }`
+- Class instantiation: `var instance = ClassName();`
+- Instance fields: Dynamic property assignment and access
+- Methods: Functions defined within classes
+- Property access: `instance.property` and `instance.method()`
+- Independent instances: Each instance has its own field state
+
 **Example Programs**:
 
 ```javascript
@@ -502,9 +518,61 @@ fun test() {
     sum();  // Prints 6
 }
 test();
+
+// Classes and Objects - basic class definition
+class Person {
+    greet() {
+        print "Hello, I'm a person!";
+    }
+}
+
+var person = Person();
+person.greet();  // Prints "Hello, I'm a person!"
+
+// Classes with instance fields
+class Dog {
+    bark() {
+        print "Woof!";
+    }
+}
+
+var dog1 = Dog();
+dog1.name = "Buddy";
+dog1.age = 3;
+
+var dog2 = Dog();
+dog2.name = "Max";
+dog2.age = 5;
+
+print dog1.name;  // Prints "Buddy"
+print dog1.age;   // Prints 3
+print dog2.name;  // Prints "Max"
+print dog2.age;   // Prints 5
+dog1.bark();      // Prints "Woof!"
+
+// Classes with multiple methods
+class Calculator {
+    add() {
+        print "Adding...";
+    }
+
+    subtract() {
+        print "Subtracting...";
+    }
+
+    multiply() {
+        print "Multiplying...";
+    }
+}
+
+var calc = Calculator();
+calc.add();       // Prints "Adding..."
+calc.subtract();  // Prints "Subtracting..."
+calc.multiply();  // Prints "Multiplying..."
 ```
 
 **Planned**:
 - String operations and methods
-- Classes and objects
+- Class inheritance
+- Constructor methods (init)
 - First-class closures (returning closures from functions)

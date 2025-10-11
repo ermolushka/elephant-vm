@@ -87,8 +87,8 @@ impl<'a> ParseRules<'a> {
             TokenType::Dot,
             ParseRule {
                 prefix: None,
-                infix: None,
-                precedence: Precedence::PrecNone,
+                infix: Some(Compiler::dot),
+                precedence: Precedence::PrecCall,
             },
         );
         rules.insert(
@@ -456,6 +456,8 @@ impl<'a> Compiler<'a> {
             self.var_declaration();
         } else if self.match_token(TokenType::Fun) {
             self.fun_declaration();
+        } else if self.match_token(TokenType::Class) {
+            self.class_declaration();
         } else {
             // we found start of statement
             self.statement();
@@ -489,6 +491,61 @@ impl<'a> Compiler<'a> {
         if self.scope_depth == 0 {
             self.emit_bytes(OpCode::OpDefineGlobal as u8, global as u8);
         }
+    }
+
+    pub fn class_declaration(&mut self) {
+        // Parse the class name
+        self.consume(TokenType::Identifier, "Expect class name.");
+        let class_name = self.parser.previous.clone();
+
+        // Get the class name as a string
+        let name_str = &self.scanner.source[class_name.start..class_name.start + class_name.length];
+        let name_constant = self.make_constant(Value::new_string(name_str.to_string()));
+
+        // Declare and define the class name in the current scope
+        if self.scope_depth > 0 {
+            self.add_local(name_str);
+            self.mark_initialized();
+        }
+
+        // Emit OP_CLASS with the class name
+        self.emit_bytes(OpCode::OpClass as u8, name_constant as u8);
+
+        // If global scope, define the global variable but keep class on stack for methods
+        if self.scope_depth == 0 {
+            self.emit_bytes(OpCode::OpDefineGlobal as u8, name_constant as u8);
+            // Get the class back on the stack for method definitions
+            self.emit_bytes(OpCode::OpGetGlobal as u8, name_constant as u8);
+        }
+
+        // Parse class body
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+
+        // Parse methods
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.method();
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.");
+
+        // Pop the class from the stack after all methods are defined
+        self.emit_byte(OpCode::OpPop as u8);
+    }
+
+    pub fn method(&mut self) {
+        // Parse method name
+        self.consume(TokenType::Identifier, "Expect method name.");
+        let method_name = self.parser.previous.clone();
+
+        // Get the method name as a string
+        let name_str = &self.scanner.source[method_name.start..method_name.start + method_name.length];
+        let name_constant = self.make_constant(Value::new_string(name_str.to_string()));
+
+        // Compile the method as a function
+        self.function(TokenType::Fun, &method_name);
+
+        // Emit OP_METHOD with the method name
+        self.emit_bytes(OpCode::OpMethod as u8, name_constant as u8);
     }
 
     pub fn function(&mut self, _function_type: TokenType, function_name: &Token) {
@@ -894,6 +951,31 @@ impl<'a> Compiler<'a> {
         let arg_count = self.argument_list();
         self.emit_byte(OpCode::OpCall as u8);
         self.emit_byte(arg_count);
+    }
+
+    pub fn dot(&mut self, can_assign: bool) {
+        // Parse property name
+        self.consume(TokenType::Identifier, "Expect property name after '.'.");
+        let name = self.parser.previous.clone();
+
+        // Get property name as string
+        let name_str = &self.scanner.source[name.start..name.start + name.length];
+        let name_constant = self.make_constant(Value::new_string(name_str.to_string()));
+
+        // Check if this is a method call or property access
+        if self.match_token(TokenType::LeftParen) {
+            // Method invocation: obj.method(args)
+            let arg_count = self.argument_list();
+            self.emit_bytes(OpCode::OpInvoke as u8, name_constant as u8);
+            self.emit_byte(arg_count);
+        } else if can_assign && self.match_token(TokenType::Equal) {
+            // Property set: obj.prop = value
+            self.expression();
+            self.emit_bytes(OpCode::OpSetProperty as u8, name_constant as u8);
+        } else {
+            // Property get: obj.prop
+            self.emit_bytes(OpCode::OpGetProperty as u8, name_constant as u8);
+        }
     }
 
     pub fn argument_list(&mut self) -> u8 {

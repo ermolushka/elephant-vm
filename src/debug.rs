@@ -29,6 +29,11 @@ pub const OP_CLOSURE: u8 = OpCode::OpClosure as u8;
 pub const OP_GET_UPVALUE: u8 = OpCode::OpGetUpvalue as u8;
 pub const OP_SET_UPVALUE: u8 = OpCode::OpSetUpvalue as u8;
 pub const OP_CLOSE_UPVALUE: u8 = OpCode::OpCloseUpvalue as u8;
+pub const OP_CLASS: u8 = OpCode::OpClass as u8;
+pub const OP_GET_PROPERTY: u8 = OpCode::OpGetProperty as u8;
+pub const OP_SET_PROPERTY: u8 = OpCode::OpSetProperty as u8;
+pub const OP_METHOD: u8 = OpCode::OpMethod as u8;
+pub const OP_INVOKE: u8 = OpCode::OpInvoke as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -79,6 +84,19 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OP_GET_UPVALUE => byte_instruction("OP_GET_UPVALUE", chunk, offset),
         OP_SET_UPVALUE => byte_instruction("OP_SET_UPVALUE", chunk, offset),
         OP_CLOSE_UPVALUE => simple_instruction("OP_CLOSE_UPVALUE", offset),
+        OP_CLASS => constant_instruction("OP_CLASS", chunk, offset),
+        OP_GET_PROPERTY => constant_instruction("OP_GET_PROPERTY", chunk, offset),
+        OP_SET_PROPERTY => constant_instruction("OP_SET_PROPERTY", chunk, offset),
+        OP_METHOD => constant_instruction("OP_METHOD", chunk, offset),
+        OP_INVOKE => {
+            let name_index = chunk.code[offset + 1];
+            let arg_count = chunk.code[offset + 2];
+            println!(
+                "{:16} ({} args) {:4} '{:?}'",
+                "OP_INVOKE", arg_count, name_index, chunk.constants.values[name_index as usize]
+            );
+            offset + 3
+        }
 
         _ => {
             println!("Unknown opcode: {}", instruction);
