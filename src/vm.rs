@@ -342,6 +342,19 @@ impl VM {
                         return InterpretResult::InterpretRuntimeError;
                     }
                 }
+                OP_CALL_NAMED => {
+                    let arg_count = self.read_byte() as usize;
+                    // For named arguments, each argument consists of a name and value on stack
+                    // Plus the class to call
+                    let total_values = arg_count * 2 + 1;
+                    if self.stack.len() < total_values {
+                        self.run_time_error("Stack underflow in named call");
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                    if !self.call_value_named(self.peek(arg_count * 2), arg_count) {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
                 OP_CLOSURE => {
                     let constant_index = self.read_byte() as usize;
                     let function = self.chunk.constants.values[constant_index].clone();
@@ -568,6 +581,44 @@ impl VM {
             }
         }
         self.run_time_error("Can only call functions and classes.");
+        false
+    }
+
+    pub fn call_value_named(&mut self, callee: Value, arg_count: usize) -> bool {
+        if callee.is_class() {
+            // Calling a class with named arguments creates a new instance
+            if let Some(class_obj) = callee.as_class() {
+                let class_rc = Rc::new(RefCell::new(class_obj.clone()));
+                let instance = Value::new_instance(class_rc);
+
+                // Process named arguments and set instance fields
+                // Stack layout: [class, name1, value1, name2, value2, ...]
+                // We need to read pairs from the stack
+                let mut pairs = Vec::new();
+                for i in 0..arg_count {
+                    let value = self.pop();  // Get value (last pushed)
+                    let name = self.pop();   // Get name (second to last pushed)
+                    pairs.push((name, value));
+                }
+
+                // Replace class on stack with instance
+                self.pop(); // Remove class
+                self.push(instance.clone());
+
+                // Set instance fields from the collected pairs
+                for (name, value) in pairs {
+                    if let Some(name_str) = name.as_string() {
+                        if let Some(instance_obj) = instance.as_instance() {
+                            instance_obj.fields.borrow_mut().insert(name_str, value);
+                        }
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        self.run_time_error("Named arguments are only supported for class constructors.");
         false
     }
 

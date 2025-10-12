@@ -33,6 +33,8 @@ var person = Person();
 person.greet();
 
 // Test class with fields
-var person2 = Person();
+var person2 = Person(name="Test");
+print person2.name;
 person2.name = "Alice";
 print person2.name;
+

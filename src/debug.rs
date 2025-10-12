@@ -34,6 +34,7 @@ pub const OP_GET_PROPERTY: u8 = OpCode::OpGetProperty as u8;
 pub const OP_SET_PROPERTY: u8 = OpCode::OpSetProperty as u8;
 pub const OP_METHOD: u8 = OpCode::OpMethod as u8;
 pub const OP_INVOKE: u8 = OpCode::OpInvoke as u8;
+pub const OP_CALL_NAMED: u8 = OpCode::OpCallNamed as u8;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
     println!("== {} ==", name);
@@ -96,6 +97,11 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
                 "OP_INVOKE", arg_count, name_index, chunk.constants.values[name_index as usize]
             );
             offset + 3
+        }
+        OP_CALL_NAMED => {
+            let arg_count = chunk.code[offset + 1];
+            println!("{:16} {:4} args", "OP_CALL_NAMED", arg_count);
+            offset + 2
         }
 
         _ => {

@@ -39,6 +39,7 @@ pub enum OpCode {
     OpSetProperty,
     OpMethod,
     OpInvoke,
+    OpCallNamed,
 }
 
 /**

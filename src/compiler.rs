@@ -948,9 +948,14 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn call(&mut self, _can_assign: bool) {
-        let arg_count = self.argument_list();
-        self.emit_byte(OpCode::OpCall as u8);
-        self.emit_byte(arg_count);
+        let (arg_count, is_named) = self.argument_list_with_type();
+        if is_named {
+            self.emit_byte(OpCode::OpCallNamed as u8);
+            self.emit_byte(arg_count);
+        } else {
+            self.emit_byte(OpCode::OpCall as u8);
+            self.emit_byte(arg_count);
+        }
     }
 
     pub fn dot(&mut self, can_assign: bool) {
@@ -979,18 +984,65 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn argument_list(&mut self) -> u8 {
+        let (count, _) = self.argument_list_with_type();
+        count
+    }
+
+    pub fn argument_list_with_type(&mut self) -> (u8, bool) {
         let mut arg_count = 0;
+        let mut has_named_args = false;
+
         if !self.check(TokenType::RightParen) {
             loop {
-                self.expression();
-                arg_count += 1;
+                // Check if this is a named argument (identifier followed by =)
+                if self.check(TokenType::Identifier) {
+                    let checkpoint = self.parser.current.clone();
+                    self.advance(); // consume identifier
+                    if self.check(TokenType::Equal) {
+                        // This is a named argument
+                        has_named_args = true;
+
+                        // Get the argument name as a string
+                        let name_token = self.parser.previous.clone();
+                        let name_str = &self.scanner.source[name_token.start..name_token.start + name_token.length];
+
+                        // Emit the name as a string constant
+                        let name_constant = self.make_constant(crate::value::Value::new_string(name_str.to_string()));
+                        self.emit_byte(crate::chunk::OpCode::OpConstant as u8);
+                        self.emit_byte(name_constant as u8);
+
+                        // Consume the = token
+                        self.advance();
+
+                        // Parse the value expression
+                        self.expression();
+
+                        arg_count += 1;
+                    } else {
+                        // Not a named argument, backtrack
+                        self.parser.current = checkpoint;
+                        if has_named_args {
+                            self.error_at_current("Cannot mix positional and named arguments");
+                        }
+                        self.expression();
+                        arg_count += 1;
+                    }
+                } else {
+                    if has_named_args {
+                        self.error_at_current("Cannot mix positional and named arguments");
+                    }
+                    self.expression();
+                    arg_count += 1;
+                }
+
                 if !self.match_token(TokenType::Comma) {
                     break;
                 }
             }
         }
+
         self.consume(TokenType::RightParen, "Expect ')' after arguments.");
-        arg_count
+        (arg_count, has_named_args)
     }
 
     pub fn block(&mut self) {
