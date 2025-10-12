@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct FunctionObj {
@@ -80,6 +81,7 @@ pub enum Value {
     Closure(ClosureObj),
     Class(ClassObj),
     Instance(InstanceObj),
+    NamedArgs(HashMap<String, Value>),
 }
 
 impl Value {
@@ -112,6 +114,10 @@ impl Value {
 
     pub fn is_instance(&self) -> bool {
         matches!(self, Value::Instance(_))
+    }
+
+    pub fn is_named_args(&self) -> bool {
+        matches!(self, Value::NamedArgs(_))
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -225,6 +231,13 @@ impl Value {
         }
     }
 
+    pub fn as_named_args(&self) -> Option<&HashMap<String, Value>> {
+        match self {
+            Value::NamedArgs(args) => Some(args),
+            _ => None,
+        }
+    }
+
     pub fn new_string(value: String) -> Self {
         Value::String(value)
     }
@@ -276,6 +289,10 @@ impl Value {
             class,
             fields: Rc::new(RefCell::new(std::collections::HashMap::new())),
         })
+    }
+
+    pub fn new_named_args(args: HashMap<String, Value>) -> Self {
+        Value::NamedArgs(args)
     }
 }
 
