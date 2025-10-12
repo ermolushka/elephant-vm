@@ -640,9 +640,3 @@ car.getType();  // Prints "Car"
 print car.brand;  // Prints "Toyota"
 print car.year;   // Prints 2024
 ```
-
-**Planned**:
-- String operations and methods
-- Constructor methods (init)
-- First-class closures (returning closures from functions)
-- Super keyword for calling parent methods
