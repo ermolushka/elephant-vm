@@ -277,7 +277,6 @@ For the expression `5 > 3 == true`:
 
 ## Testing
 
-**Comprehensive Test Coverage - 249 Tests**:
 
 ```bash
 # Run all tests
