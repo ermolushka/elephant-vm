@@ -683,7 +683,7 @@ impl VM {
                 // Stack layout: [class, name1, value1, name2, value2, ...]
                 // We need to read pairs from the stack
                 let mut pairs = Vec::new();
-                for i in 0..arg_count {
+                for _i in 0..arg_count {
                     let value = self.pop();  // Get value (last pushed)
                     let name = self.pop();   // Get name (second to last pushed)
                     pairs.push((name, value));
@@ -783,6 +783,7 @@ impl VM {
     }
 
     // String interning methods
+    #[allow(dead_code)]
     pub fn intern_string(&mut self, string: String) -> String {
         // Check if string already exists in the string table
         if let Some(_) = self.strings.get(&string) {
@@ -795,6 +796,7 @@ impl VM {
         string
     }
 
+    #[allow(dead_code)]
     pub fn find_interned_string(&self, string: &str) -> Option<&String> {
         // Check if string exists in the string table
         self.strings.get_key_value(string).map(|(key, _)| key)

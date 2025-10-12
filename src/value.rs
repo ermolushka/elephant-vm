@@ -82,14 +82,17 @@ pub enum Value {
     Closure(ClosureObj),
     Class(ClassObj),
     Instance(InstanceObj),
+    #[allow(dead_code)]
     NamedArgs(HashMap<String, Value>),
 }
 
 impl Value {
+    #[allow(dead_code)]
     pub fn is_bool(&self) -> bool {
         matches!(self, Value::Bool(_))
     }
 
+    #[allow(dead_code)]
     pub fn is_nil(&self) -> bool {
         matches!(self, Value::Nil)
     }
@@ -113,14 +116,17 @@ impl Value {
         matches!(self, Value::Class(_))
     }
 
+    #[allow(dead_code)]
     pub fn is_instance(&self) -> bool {
         matches!(self, Value::Instance(_))
     }
 
+    #[allow(dead_code)]
     pub fn is_named_args(&self) -> bool {
         matches!(self, Value::NamedArgs(_))
     }
 
+    #[allow(dead_code)]
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Value::Bool(b) => Some(*b),
@@ -211,6 +217,7 @@ impl Value {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_class_mut(&mut self) -> Option<&mut ClassObj> {
         match self {
             Value::Class(c) => Some(c),
@@ -225,6 +232,7 @@ impl Value {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_instance_mut(&mut self) -> Option<&mut InstanceObj> {
         match self {
             Value::Instance(i) => Some(i),
@@ -232,6 +240,7 @@ impl Value {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_named_args(&self) -> Option<&HashMap<String, Value>> {
         match self {
             Value::NamedArgs(args) => Some(args),
@@ -243,6 +252,7 @@ impl Value {
         Value::String(value)
     }
 
+    #[allow(dead_code)]
     pub fn new_function(arity: usize, chunk: crate::chunk::Chunk, name: String) -> Self {
         Value::Function(FunctionObj {
             arity,
@@ -266,6 +276,7 @@ impl Value {
         })
     }
 
+    #[allow(dead_code)]
     pub fn new_closure(function: FunctionObj) -> Self {
         let upvalues = vec![];
         Value::Closure(ClosureObj { function, upvalues })
@@ -293,6 +304,7 @@ impl Value {
         })
     }
 
+    #[allow(dead_code)]
     pub fn new_named_args(args: HashMap<String, Value>) -> Self {
         Value::NamedArgs(args)
     }

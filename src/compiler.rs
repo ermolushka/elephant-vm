@@ -736,6 +736,7 @@ impl<'a> Compiler<'a> {
         self.named_variable(self.parser.previous, can_assign);
     }
 
+    #[allow(dead_code)]
     pub fn variable_assignment(&mut self) {
         self.named_variable(self.parser.previous, true);
     }
@@ -760,8 +761,8 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn named_variable(&mut self, name: Token, can_assign: bool) {
-        let mut get_op;
-        let mut set_op;
+        let get_op;
+        let set_op;
         let mut arg = self.resolve_local(name);
 
         if arg != -1 {
@@ -909,9 +910,9 @@ impl<'a> Compiler<'a> {
     pub fn for_statement(&mut self) {
         self.begin_scope();
         self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
-        if (self.match_token(TokenType::Semicolon)) {
+        if self.match_token(TokenType::Semicolon) {
             {}
-        } else if (self.match_token(TokenType::Var)) {
+        } else if self.match_token(TokenType::Var) {
             self.var_declaration();
         } else {
             self.expression();
