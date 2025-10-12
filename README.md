@@ -135,6 +135,8 @@ pub struct VM {
 - `OP_SET_PROPERTY`: Set property on instance
 - `OP_METHOD`: Attach method to class
 - `OP_INVOKE`: Invoke method on instance
+- `OP_INHERIT`: Copy methods from superclass to subclass
+- `OP_GET_SUPER`: Get method from superclass (for super keyword)
 - `OP_RETURN`: End execution, return result
 
 **Example Execution**:
@@ -242,6 +244,7 @@ For the expression `5 > 3 == true`:
   - Type checking and safe value access
   - Cross-type equality and truthiness evaluation
   - Upvalue management for closures with open/closed states
+  - Class objects with superclass references for inheritance
 - **Debug System (`src/debug.rs`)**: Disassembly and debugging tools
 - **Compiler (`src/compiler.rs`)**: Pratt parser implementation with expression parsing, local variables, functions, and closures
   - **Number literals** - Parse and emit constants for numeric values
@@ -267,6 +270,10 @@ For the expression `5 > 3 == true`:
   - **Method definitions** - Parse methods within class bodies
   - **Property access** - Parse instance.property and instance.method() syntax
   - **Class instantiation** - Call classes like functions to create instances
+  - **Class inheritance** - Parse class Child < Parent syntax for single inheritance
+  - **Method inheritance** - Child classes inherit methods from parent classes
+  - **Method override** - Child classes can override parent methods
+  - **Inheritance chain lookup** - Methods resolved through superclass hierarchy
 
 ## Testing
 
@@ -414,6 +421,10 @@ src/
 - Methods: Functions defined within classes
 - Property access: `instance.property` and `instance.method()`
 - Independent instances: Each instance has its own field state
+- **Inheritance**: `class Child < Parent` - Single inheritance support
+- **Method inheritance**: Child classes inherit all parent methods
+- **Method override**: Child classes can redefine parent methods
+- **Multi-level inheritance**: Supports inheritance chains (A → B → C)
 
 **Example Programs**:
 
@@ -569,10 +580,69 @@ var calc = Calculator();
 calc.add();       // Prints "Adding..."
 calc.subtract();  // Prints "Subtracting..."
 calc.multiply();  // Prints "Multiplying..."
+
+// Class Inheritance - basic inheritance
+class Animal {
+    speak() {
+        print "Animal sound";
+    }
+
+    move() {
+        print "Moving...";
+    }
+}
+
+class Dog < Animal {
+    speak() {
+        print "Woof!";  // Override parent method
+    }
+
+    bark() {
+        print "Bark bark!";
+    }
+}
+
+var dog = Dog();
+dog.speak();  // Prints "Woof!" (overridden)
+dog.move();   // Prints "Moving..." (inherited)
+dog.bark();   // Prints "Bark bark!" (new method)
+
+// Multi-level inheritance
+class Puppy < Dog {
+    play() {
+        print "Playing with toy!";
+    }
+}
+
+var puppy = Puppy();
+puppy.speak();  // Prints "Woof!" (from Dog)
+puppy.move();   // Prints "Moving..." (from Animal)
+puppy.bark();   // Prints "Bark bark!" (from Dog)
+puppy.play();   // Prints "Playing with toy!" (from Puppy)
+
+// Inheritance with fields
+class Vehicle {
+    getType() {
+        print "Vehicle";
+    }
+}
+
+class Car < Vehicle {
+    getType() {
+        print "Car";
+    }
+}
+
+var car = Car();
+car.brand = "Toyota";
+car.year = 2024;
+car.getType();  // Prints "Car"
+print car.brand;  // Prints "Toyota"
+print car.year;   // Prints 2024
 ```
 
 **Planned**:
 - String operations and methods
-- Class inheritance
 - Constructor methods (init)
 - First-class closures (returning closures from functions)
+- Super keyword for calling parent methods
