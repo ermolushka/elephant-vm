@@ -348,7 +348,7 @@ cargo build --release
 cargo test
 
 # Run with debugging output
-RUST_LOG=debug cargo run
+cargo run --debug
 ```
 
 ## Development
