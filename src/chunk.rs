@@ -40,6 +40,8 @@ pub enum OpCode {
     OpMethod,
     OpInvoke,
     OpCallNamed,
+    OpInherit,
+    OpGetSuper,
 }
 
 /**

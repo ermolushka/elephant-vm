@@ -102,6 +102,24 @@ impl VM {
         self.stack[self.stack.len() - 1 - distance].clone()
     }
 
+    // Helper function to lookup a method in a class or its superclasses
+    fn lookup_method(&self, class: &crate::value::ClassObj, method_name: &str) -> Option<Value> {
+        // Check current class
+        let methods = class.methods.borrow();
+        if let Some(method) = methods.get(method_name) {
+            return Some(method.clone());
+        }
+        drop(methods);
+
+        // Check superclass chain
+        if let Some(ref superclass_rc) = class.superclass {
+            let superclass = superclass_rc.borrow();
+            return self.lookup_method(&superclass, method_name);
+        }
+
+        None
+    }
+
     pub fn read_byte(&mut self) -> u8 {
         let byte = self.chunk.code[self.ip];
         self.ip += 1;
@@ -461,16 +479,14 @@ impl VM {
                                 self.push(value);
                             } else {
                                 drop(fields_ref); // Drop borrow
-                                // Try to find method in class
+                                // Try to find method in class (and superclasses)
                                 let class_ref = instance.class.borrow();
-                                let methods_ref = class_ref.methods.borrow();
-                                if let Some(method) = methods_ref.get(&name) {
-                                    let method_value = method.clone();
-                                    drop(methods_ref); // Drop borrow
+                                if let Some(method_value) = self.lookup_method(&class_ref, &name) {
                                     drop(class_ref); // Drop borrow before modifying stack
                                     self.pop(); // Pop instance
                                     self.push(method_value);
                                 } else {
+                                    drop(class_ref);
                                     self.run_time_error(&format!("Undefined property '{}'", name));
                                     return InterpretResult::InterpretRuntimeError;
                                 }
@@ -519,6 +535,46 @@ impl VM {
                         return InterpretResult::InterpretRuntimeError;
                     }
                 }
+                OP_INHERIT => {
+                    // Inherit methods from superclass
+                    // Stack layout: [superclass] [subclass]
+                    let superclass_value = self.peek(1);
+                    let subclass_value = self.peek(0);
+
+                    if !superclass_value.is_class() {
+                        self.run_time_error("Superclass must be a class.");
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+
+                    if !subclass_value.is_class() {
+                        self.run_time_error("Subclass must be a class.");
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+
+                    // Clone the values to avoid borrow checker issues
+                    let superclass = superclass_value.as_class().unwrap().clone();
+                    let subclass = subclass_value.as_class().unwrap();
+
+                    // Copy all methods from superclass to subclass
+                    let superclass_methods = superclass.methods.borrow();
+                    let mut subclass_methods = subclass.methods.borrow_mut();
+
+                    for (method_name, method_value) in superclass_methods.iter() {
+                        subclass_methods.insert(method_name.clone(), method_value.clone());
+                    }
+
+                    drop(subclass_methods);
+                    drop(superclass_methods);
+
+                    // Set the superclass reference
+                    let superclass_rc = Rc::new(RefCell::new(superclass));
+                    let stack_len = self.stack.len();
+                    if let Value::Class(ref mut subclass_obj) = self.stack[stack_len - 1] {
+                        subclass_obj.superclass = Some(superclass_rc);
+                    }
+
+                    self.pop(); // Pop subclass (leave superclass for now, will be popped later)
+                }
                 OP_INVOKE => {
                     // Method invocation
                     let name_value = self.read_constant();
@@ -526,23 +582,58 @@ impl VM {
                     if let Some(name) = name_value.as_string() {
                         let instance_value = self.peek(arg_count);
                         if let Some(instance) = instance_value.as_instance() {
-                            // Look up method in class
+                            // Look up method in class (and superclasses)
                             let class_ref = instance.class.borrow();
-                            let methods_ref = class_ref.methods.borrow();
-                            if let Some(method) = methods_ref.get(&name) {
-                                let method_to_call = method.clone();
-                                drop(methods_ref); // Drop borrow before call
+                            if let Some(method_to_call) = self.lookup_method(&class_ref, &name) {
                                 drop(class_ref); // Drop borrow before call
                                 // Call the method
                                 if !self.call_value(method_to_call, arg_count) {
                                     return InterpretResult::InterpretRuntimeError;
                                 }
                             } else {
+                                drop(class_ref);
                                 self.run_time_error(&format!("Undefined method '{}'", name));
                                 return InterpretResult::InterpretRuntimeError;
                             }
                         } else {
                             self.run_time_error("Only instances have methods.");
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    } else {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OP_GET_SUPER => {
+                    // Get method from superclass
+                    // Stack: [instance]
+                    let name_value = self.read_constant();
+                    if let Some(method_name) = name_value.as_string() {
+                        let instance_value = self.peek(0);
+                        if let Some(instance) = instance_value.as_instance() {
+                            let class_ref = instance.class.borrow();
+
+                            // Look up the method in the superclass
+                            if let Some(ref superclass_rc) = class_ref.superclass {
+                                let superclass = superclass_rc.borrow();
+                                if let Some(method) = self.lookup_method(&superclass, &method_name) {
+                                    drop(superclass);
+                                    drop(class_ref);
+                                    // Replace instance with the method on stack
+                                    self.pop();
+                                    self.push(method);
+                                } else {
+                                    drop(superclass);
+                                    drop(class_ref);
+                                    self.run_time_error(&format!("Undefined property '{}' in superclass.", method_name));
+                                    return InterpretResult::InterpretRuntimeError;
+                                }
+                            } else {
+                                drop(class_ref);
+                                self.run_time_error("Class has no superclass.");
+                                return InterpretResult::InterpretRuntimeError;
+                            }
+                        } else {
+                            self.run_time_error("Invalid receiver for super.");
                             return InterpretResult::InterpretRuntimeError;
                         }
                     } else {
@@ -567,11 +658,8 @@ impl VM {
                 // Replace class on stack with instance
                 let stack_slot = self.stack.len() - arg_count - 1;
                 self.stack[stack_slot] = instance;
-                // If there's an init method, call it
-                let methods_ref = class_obj.methods.borrow();
-                if let Some(init_method) = methods_ref.get("init") {
-                    let method_to_call = init_method.clone();
-                    drop(methods_ref); // Drop the borrow before recursive call
+                // If there's an init method, call it (check inheritance chain)
+                if let Some(method_to_call) = self.lookup_method(class_obj, "init") {
                     return self.call_value(method_to_call, arg_count);
                 } else if arg_count != 0 {
                     self.run_time_error(&format!("Expected 0 arguments but got {}.", arg_count));

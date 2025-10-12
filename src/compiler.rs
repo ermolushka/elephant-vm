@@ -310,7 +310,7 @@ impl<'a> ParseRules<'a> {
         rules.insert(
             TokenType::Super,
             ParseRule {
-                prefix: None,
+                prefix: Some(Compiler::super_),
                 infix: None,
                 precedence: Precedence::PrecNone,
             },
@@ -518,6 +518,33 @@ impl<'a> Compiler<'a> {
             self.emit_bytes(OpCode::OpGetGlobal as u8, name_constant as u8);
         }
 
+        // Check for inheritance (< superclass)
+        if self.match_token(TokenType::Less) {
+            self.consume(TokenType::Identifier, "Expect superclass name.");
+
+            // Get the superclass by name (this loads it onto the stack)
+            let superclass_name = self.parser.previous.clone();
+            let superclass_str = &self.scanner.source[superclass_name.start..superclass_name.start + superclass_name.length];
+
+            // Check if class inherits from itself
+            if name_str == superclass_str {
+                self.error_at_current("A class can't inherit from itself.");
+            }
+
+            // Load the superclass onto the stack
+            self.named_variable(superclass_name, false);
+
+            // Now we need to load the subclass onto the stack again (for OP_INHERIT)
+            // Stack should be: [superclass] [subclass]
+            self.emit_bytes(OpCode::OpGetGlobal as u8, name_constant as u8);
+
+            // Emit OP_INHERIT (expects [superclass] [subclass] on stack)
+            self.emit_byte(OpCode::OpInherit as u8);
+
+            // Get the class back on the stack for method definitions
+            self.emit_bytes(OpCode::OpGetGlobal as u8, name_constant as u8);
+        }
+
         // Parse class body
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
 
@@ -711,6 +738,25 @@ impl<'a> Compiler<'a> {
 
     pub fn variable_assignment(&mut self) {
         self.named_variable(self.parser.previous, true);
+    }
+
+    pub fn super_(&mut self, _can_assign: bool) {
+        // super.method_name
+        self.consume(TokenType::Dot, "Expect '.' after 'super'.");
+        self.consume(TokenType::Identifier, "Expect superclass method name.");
+        let method_name = self.parser.previous.clone();
+        let name_constant = self.identifier_constant(method_name);
+
+        // For super to work, we need to load 'this' (the current instance) onto the stack
+        // We'll use a simpler approach: just emit code to get "this" which should be a local variable
+        // In methods, "this" is typically the first parameter/local
+        // For now, we'll use a direct approach to get the instance from the stack
+
+        // Emit OP_GET_LOCAL 0 to get 'this' (assuming it's the first local in methods)
+        self.emit_bytes(OpCode::OpGetLocal as u8, 0);
+
+        // Emit the method name constant for OP_GET_SUPER to use
+        self.emit_bytes(OpCode::OpGetSuper as u8, name_constant as u8);
     }
 
     pub fn named_variable(&mut self, name: Token, can_assign: bool) {

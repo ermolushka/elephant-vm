@@ -49,6 +49,7 @@ impl PartialEq for ClosureObj {
 pub struct ClassObj {
     pub name: String,
     pub methods: Rc<RefCell<std::collections::HashMap<String, Value>>>, // Method name -> Closure
+    pub superclass: Option<Rc<RefCell<ClassObj>>>, // Optional superclass for inheritance
 }
 
 impl PartialEq for ClassObj {
@@ -281,6 +282,7 @@ impl Value {
         Value::Class(ClassObj {
             name,
             methods: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            superclass: None,
         })
     }
 
